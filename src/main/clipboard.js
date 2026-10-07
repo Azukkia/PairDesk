@@ -4,7 +4,10 @@
 
 import { EventEmitter } from 'node:events';
 
-const MAX_TEXT = 1024 * 1024;
+// One data-channel message (SCTP limit 256 KiB, and big messages delay the
+// mouse and keyboard behind them).
+const MAX_BYTES = 200 * 1024;
+const fits = (text) => Buffer.byteLength(text, 'utf8') <= MAX_BYTES;
 
 export class ClipboardSync extends EventEmitter {
   constructor({ clipboard, getSequence = null, intervalMs = 700, log }) {
@@ -51,12 +54,12 @@ export class ClipboardSync extends EventEmitter {
     const text = this.#read();
     if (text == null || text === this.lastText) return;
     this.lastText = text;
-    if (text.length && text.length <= MAX_TEXT) this.emit('change', text);
+    if (text.length && fits(text)) this.emit('change', text);
   }
 
   /** Writes text received from a partner without echoing it back. */
   setText(text) {
-    if (typeof text !== 'string' || text.length > MAX_TEXT || text === this.lastText) return;
+    if (typeof text !== 'string' || !fits(text) || text === this.lastText) return;
     try {
       this.clipboard.writeText(text);
       this.lastText = text;

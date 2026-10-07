@@ -53,12 +53,25 @@ export function normalizePassword(password) {
   return String(password ?? '').normalize('NFC').trim();
 }
 
-// Encoder settings per viewer quality mode. `scale` is the resolution
-// downscale factor for normal screens and for large (> 2560×1600) screens.
+// Encoder settings per viewer quality mode. `scale` is the base resolution
+// downscale factor for normal screens and for large (> 2560×1600) screens;
+// with 'detail' content the host lowers it further on slow links.
 export const QUALITY_PRESETS = {
-  speed: { maxBitrate: 1_500_000, maxFramerate: 30, scale: [1.5, 2.5], contentHint: 'motion', degradation: 'maintain-framerate' },
+  speed: { maxBitrate: 2_500_000, maxFramerate: 60, scale: [1.5, 2], contentHint: 'motion', degradation: 'maintain-framerate' },
   balanced: { maxBitrate: 5_000_000, maxFramerate: 30, scale: [1, 1.5], contentHint: 'detail', degradation: 'balanced' },
   quality: { maxBitrate: 15_000_000, maxFramerate: 30, scale: [1, 1], contentHint: 'detail', degradation: 'maintain-resolution' },
 };
+
+/** True when `version` ("1.2.3") is at least `min`; false when unknown. */
+export function versionAtLeast(version, min) {
+  const parse = (v) => String(v || '').split('.').map((n) => parseInt(n, 10) || 0);
+  if (!version) return false;
+  const a = parse(version);
+  const b = parse(min);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return true;
+}
 
 export const MOUSE_BUTTONS = { left: 0, middle: 1, right: 2, back: 3, forward: 4 };

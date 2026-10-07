@@ -259,6 +259,17 @@ async function scenario(host, ctrl) {
   await poll(() => host.main.evaluate(() => document.activeElement?.id === 'partner-id'), {
     message: `remote click focuses the field at ${JSON.stringify(field)}`,
   });
+  // The controller's own cursor takes the host's cursor shape (I-beam over a text field).
+  const shape = await poll(() => viewer.evaluate(() => document.querySelector('#remote-screen').style.cursor || null), {
+    message: 'host cursor shape shown on the viewer',
+  });
+  process.stderr.write(`viewer cursor over the host text field: ${shape.slice(0, 80)}\n`);
+  if (process.platform === 'win32') assert.equal(shape, 'text');
+  // Estimated delay badge.
+  const delay = await poll(() => viewer.evaluate(() => document.querySelector('.topbar .delay')?.textContent || null), {
+    message: 'delay estimate shown',
+  });
+  process.stderr.write(`viewer ${delay}\n`);
   await viewer.keyboard.type('4815');
   await poll(async () => (await host.main.inputValue('#partner-id')).replace(/\s/g, '') === '4815', { message: 'remote typing' });
   await viewer.keyboard.press('Backspace');

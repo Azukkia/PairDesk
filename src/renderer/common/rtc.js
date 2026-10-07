@@ -1,14 +1,21 @@
 // WebRTC session shared by the viewer (controller) and the host panel.
 //
 // The host is always the offerer: it owns the screen track and creates the
-// "control" (JSON messages) and "input" (mouse/keyboard events) channels.
-// Files travel on dedicated "file:<id>" channels with back-pressure.
+// "control" (JSON messages), "input" (clicks, keys: ordered and reliable) and
+// "pointer" (mouse moves: unordered, never retransmitted, latest wins)
+// channels. Files travel on dedicated "file:<id>" channels, paced so that
+// they never delay the mouse and keyboard.
 
 import { api, h, icon, t, formatBytes } from './ui.js';
+import { FilePacer } from './file-pacer.js';
 
-const CHUNK_SIZE = 64 * 1024;
-const HIGH_WATER = 4 * 1024 * 1024;
+// Small chunks and a small send buffer: input messages share the connection
+// and wait behind whatever is already queued.
+const CHUNK_SIZE = 16 * 1024;
+const HIGH_WATER = 128 * 1024;
+const LOW_WATER = 32 * 1024;
 const IPC_BATCH = 512 * 1024;
+const PING_INTERVAL_MS = 250;
 
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
 
@@ -19,7 +26,11 @@ export class RtcSession extends EventTarget {
     this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 2 });
     this.control = null;
     this.input = null;
+    this.pointer = null;
     this.pendingCandidates = [];
+    this.pacer = new FilePacer();
+    this.sendingFiles = 0;
+    this.pingTimer = null;
     this.fileWaiters = new Map();
     this.incomingFiles = new Map();
     this.closed = false;
@@ -46,6 +57,7 @@ export class RtcSession extends EventTarget {
     if (role === 'host') {
       this.#adoptChannel(pc.createDataChannel('control', { ordered: true }));
       this.#adoptChannel(pc.createDataChannel('input', { ordered: true }));
+      this.#adoptChannel(pc.createDataChannel('pointer', { ordered: false, maxRetransmits: 0 }));
       pc.onnegotiationneeded = () => this.#offer();
     }
     // Signaling messages are applied strictly one after the other.
@@ -83,6 +95,11 @@ export class RtcSession extends EventTarget {
     if (this.role === 'host' && !this.closed) this.#offer({ iceRestart: true });
   }
 
+  /** New offer with the current transceiver settings (e.g. another codec). */
+  renegotiate() {
+    if (this.role === 'host' && !this.closed) this.#offer();
+  }
+
   async #onSignal(data) {
     if (this.closed || !data) return;
     const pc = this.pc;
@@ -118,8 +135,9 @@ export class RtcSession extends EventTarget {
         }
         this.#onControl(msg);
       };
-    } else if (channel.label === 'input') {
-      this.input = channel;
+    } else if (channel.label === 'input' || channel.label === 'pointer') {
+      if (channel.label === 'input') this.input = channel;
+      else this.pointer = channel;
       channel.onmessage = (e) => {
         try {
           this.#emit('input', JSON.parse(e.data));
@@ -134,12 +152,31 @@ export class RtcSession extends EventTarget {
     }
   }
 
-  sendControl(msg) {
-    if (this.control?.readyState === 'open') this.control.send(JSON.stringify(msg));
+  static #send(channel, data) {
+    if (channel?.readyState !== 'open') return false;
+    try {
+      channel.send(data);
+      return true;
+    } catch (err) {
+      // e.g. a message above the SCTP size limit, or a channel closing.
+      console.warn(`[rtc] send on ${channel.label} failed: ${err.message}`);
+      return false;
+    }
   }
 
+  sendControl(msg) {
+    return RtcSession.#send(this.control, JSON.stringify(msg));
+  }
+
+  /** Clicks, keys, wheel: ordered and reliable. */
   sendInput(events) {
-    if (this.input?.readyState === 'open' && events.length) this.input.send(JSON.stringify(events));
+    if (events.length) RtcSession.#send(this.input, JSON.stringify(events));
+  }
+
+  /** Mouse moves: latest wins (falls back to the reliable channel on hosts older than 1.1). */
+  sendPointer(events) {
+    if (!events.length) return;
+    if (!RtcSession.#send(this.pointer, JSON.stringify(events))) this.sendInput(events);
   }
 
   #onControl(msg) {
@@ -157,6 +194,12 @@ export class RtcSession extends EventTarget {
         if (rx) this.#abortIncoming(rx);
         return;
       }
+      case 'ping':
+        this.sendControl({ type: 'pong', t: msg.t });
+        return;
+      case 'pong':
+        if (Number.isFinite(msg.t)) this.pacer.onRtt(performance.now() - msg.t);
+        return;
       default:
         this.#emit('control', msg);
     }
@@ -193,7 +236,7 @@ export class RtcSession extends EventTarget {
     if (file.size > 0) {
       const dc = this.pc.createDataChannel(`file:${fid}`, { ordered: true });
       dc.binaryType = 'arraybuffer';
-      dc.bufferedAmountLowThreshold = HIGH_WATER / 2;
+      dc.bufferedAmountLowThreshold = LOW_WATER;
       await new Promise((resolve, reject) => {
         dc.onopen = resolve;
         dc.onerror = reject;
@@ -204,18 +247,24 @@ export class RtcSession extends EventTarget {
         return false;
       }
       let offset = 0;
+      this.#startPings();
       try {
         while (offset < file.size) {
           if (dc.readyState !== 'open') throw new Error('channel closed');
           if (dc.bufferedAmount > HIGH_WATER) {
             await new Promise((resolve) => {
+              const timer = setTimeout(resolve, 1000); // in case the event is missed
               dc.onbufferedamountlow = () => {
+                clearTimeout(timer);
                 dc.onbufferedamountlow = null;
                 resolve();
               };
             });
+            continue;
           }
           const buf = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+          await this.pacer.take(buf.byteLength);
+          if (dc.readyState !== 'open') throw new Error('channel closed');
           dc.send(buf);
           offset += buf.byteLength;
           view.update({ progress: offset / file.size });
@@ -224,12 +273,27 @@ export class RtcSession extends EventTarget {
         this.sendControl({ type: 'file-cancel', fid });
         view.update({ status: 'failed' });
         return false;
+      } finally {
+        this.#stopPings();
       }
     }
     const result = await done;
     const ok = result.type === 'file-done' && result.ok;
     view.update({ status: ok ? 'sent' : 'failed', progress: 1 });
     return ok;
+  }
+
+  // Round-trip probes while files are being sent: they drive the file pacer.
+  #startPings() {
+    if (this.sendingFiles++ > 0) return;
+    this.pingTimer = setInterval(() => this.sendControl({ type: 'ping', t: performance.now() }), PING_INTERVAL_MS);
+  }
+
+  #stopPings() {
+    if (--this.sendingFiles > 0) return;
+    this.sendingFiles = 0;
+    clearInterval(this.pingTimer);
+    this.pingTimer = null;
   }
 
   // ───────────── receiving files ─────────────
@@ -302,22 +366,45 @@ export class RtcSession extends EventTarget {
     rx.view?.update({ status: 'failed' });
   }
 
-  async stats() {
-    const out = { rtt: null, fps: null, bitrate: null, width: null, height: null, relayed: null };
-    if (this.closed) return out;
+  async #report() {
     const report = await this.pc.getStats();
-    let pair = null;
     const byId = new Map();
     report.forEach((s) => byId.set(s.id, s));
+    let pair = null;
     report.forEach((s) => {
       if (s.type === 'transport' && s.selectedCandidatePairId) pair = byId.get(s.selectedCandidatePairId);
+    });
+    return { report, byId, pair };
+  }
+
+  static #rate(prev, cur, num, den, factor = 1) {
+    if (!prev || !cur) return null;
+    const dd = (cur[den] ?? 0) - (prev[den] ?? 0);
+    if (dd <= 0) return null;
+    return (((cur[num] ?? 0) - (prev[num] ?? 0)) / dd) * factor;
+  }
+
+  /** Receiver (viewer) side: what the controller sees, and where the delay comes from. */
+  async stats() {
+    const out = {
+      rtt: null, fps: null, bitrate: null, width: null, height: null, relayed: null,
+      jitterBufferMs: null, decodeMs: null, freezes: null, codec: null, decoder: null,
+    };
+    if (this.closed) return out;
+    const { report, byId, pair } = await this.#report();
+    report.forEach((s) => {
       if (s.type === 'inbound-rtp' && s.kind === 'video') {
+        const prev = this.lastInbound;
         out.fps = s.framesPerSecond ?? null;
         out.width = s.frameWidth ?? null;
         out.height = s.frameHeight ?? null;
-        const now = s.timestamp;
-        if (this.lastBytes && now > this.lastBytes.ts) out.bitrate = ((s.bytesReceived - this.lastBytes.bytes) * 8 * 1000) / (now - this.lastBytes.ts);
-        this.lastBytes = { bytes: s.bytesReceived, ts: now };
+        if (prev && s.timestamp > prev.timestamp) out.bitrate = ((s.bytesReceived - prev.bytesReceived) * 8 * 1000) / (s.timestamp - prev.timestamp);
+        out.jitterBufferMs = RtcSession.#rate(prev, s, 'jitterBufferDelay', 'jitterBufferEmittedCount', 1000);
+        out.decodeMs = RtcSession.#rate(prev, s, 'totalDecodeTime', 'framesDecoded', 1000);
+        out.freezes = s.freezeCount ?? null;
+        out.decoder = s.decoderImplementation ?? null;
+        out.codec = byId.get(s.codecId)?.mimeType?.replace('video/', '') ?? null;
+        this.lastInbound = s;
       }
     });
     if (pair) {
@@ -329,9 +416,40 @@ export class RtcSession extends EventTarget {
     return out;
   }
 
+  /** Sender (host) side: encoder and send-queue health, used for adaptation. */
+  async senderStats() {
+    const out = {
+      fps: null, encodeMs: null, pacerMs: null, limitation: null, bandwidth: null, rtt: null,
+      codec: null, encoder: null, width: null, height: null, targetBitrate: null,
+    };
+    if (this.closed) return out;
+    const { report, byId, pair } = await this.#report();
+    report.forEach((s) => {
+      if (s.type === 'outbound-rtp' && s.kind === 'video') {
+        const prev = this.lastOutbound;
+        out.fps = s.framesPerSecond ?? null;
+        out.width = s.frameWidth ?? null;
+        out.height = s.frameHeight ?? null;
+        out.encodeMs = RtcSession.#rate(prev, s, 'totalEncodeTime', 'framesEncoded', 1000);
+        out.pacerMs = RtcSession.#rate(prev, s, 'totalPacketSendDelay', 'packetsSent', 1000);
+        out.limitation = s.qualityLimitationReason ?? null;
+        out.encoder = s.encoderImplementation ?? null;
+        out.targetBitrate = s.targetBitrate ?? null;
+        out.codec = byId.get(s.codecId)?.mimeType?.replace('video/', '') ?? null;
+        this.lastOutbound = s;
+      }
+    });
+    if (pair) {
+      out.bandwidth = pair.availableOutgoingBitrate ?? null;
+      out.rtt = pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null;
+    }
+    return out;
+  }
+
   close() {
     if (this.closed) return;
     this.closed = true;
+    clearInterval(this.pingTimer);
     this.offSignal?.();
     for (const rx of this.incomingFiles.values()) this.#abortIncoming(rx);
     try {

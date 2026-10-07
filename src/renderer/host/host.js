@@ -5,7 +5,8 @@
 
 import { api, h, clear, icon, t, setLanguage, formatDuration, initials } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
-import { formatId, QUALITY_PRESETS } from '../shared/protocol.js';
+import { AdaptiveScaler, CpuWatch, rankCodecs } from '../common/adaptive.js';
+import { formatId, QUALITY_PRESETS, versionAtLeast } from '../shared/protocol.js';
 
 const app = document.getElementById('app');
 let init = null;
@@ -14,8 +15,13 @@ let perms = {};
 let displays = [];
 let current = null;
 let videoSender = null;
+let videoTransceiver = null;
 let audioTrack = null;
 let quality = 'balanced';
+let captureFps = 30;
+let codecFirst = 'vp9';
+const scaler = new AdaptiveScaler();
+const cpuWatch = new CpuWatch();
 let transfers = null;
 let chat = null;
 let chatOpen = false;
@@ -108,14 +114,14 @@ function toggleChat(open = !chatOpen) {
   resize();
 }
 
-async function capture(display, withAudio) {
+async function capture(display, withAudio, fps = captureFps) {
   const video = {
     mandatory: {
       chromeMediaSource: 'desktop',
       chromeMediaSourceId: display.sourceId,
       maxWidth: display.width,
       maxHeight: display.height,
-      maxFrameRate: 30,
+      maxFrameRate: fps,
     },
   };
   if (withAudio) {
@@ -128,18 +134,35 @@ async function capture(display, withAudio) {
   return navigator.mediaDevices.getUserMedia({ audio: false, video });
 }
 
+// With 'motion' content WebRTC lowers the resolution by itself; with screen
+// content ('detail') PairDesk does it (AdaptiveScaler), else slow links freeze.
+const appScaling = () => QUALITY_PRESETS[quality].contentHint !== 'motion';
+
+function currentScale() {
+  const preset = QUALITY_PRESETS[quality];
+  const large = current.width * current.height > 2560 * 1600;
+  return preset.scale[large ? 1 : 0] * (appScaling() ? scaler.factor : 1);
+}
+
 async function applyQuality(mode) {
+  const previous = quality;
   quality = QUALITY_PRESETS[mode] ? mode : 'balanced';
   if (!videoSender?.track) return;
   const preset = QUALITY_PRESETS[quality];
+  if (quality !== previous) {
+    scaler.reset(performance.now());
+    if (preset.maxFramerate !== captureFps) {
+      captureFps = preset.maxFramerate;
+      await recapture(current); // the capture rate is fixed when the track starts
+    }
+  }
   videoSender.track.contentHint = preset.contentHint;
-  const large = current.width * current.height > 2560 * 1600;
   const params = videoSender.getParameters();
   if (!params.encodings || !params.encodings.length) params.encodings = [{}];
   Object.assign(params.encodings[0], {
     maxBitrate: preset.maxBitrate,
     maxFramerate: preset.maxFramerate,
-    scaleResolutionDownBy: preset.scale[large ? 1 : 0],
+    scaleResolutionDownBy: currentScale(),
   });
   params.degradationPreference = preset.degradation;
   try {
@@ -147,6 +170,43 @@ async function applyQuality(mode) {
   } catch (err) {
     console.warn('setParameters failed', err.message);
   }
+}
+
+function applyCodecs() {
+  try {
+    const caps = RTCRtpSender.getCapabilities('video')?.codecs;
+    if (caps && videoTransceiver?.setCodecPreferences) videoTransceiver.setCodecPreferences(rankCodecs(caps, codecFirst));
+  } catch (err) {
+    console.warn('setCodecPreferences failed', err.message);
+  }
+}
+
+// Once a second: adapt the resolution to the uplink, fall back to VP8 on hosts
+// too slow for VP9, and tell the viewer where the delay comes from.
+async function monitor() {
+  if (!rtc || rtc.closed || rtc.pc.connectionState !== 'connected') return;
+  const s = await rtc.senderStats();
+  if (appScaling() && scaler.update({ now: performance.now(), bandwidth: s.bandwidth, pacerMs: s.pacerMs }) != null) {
+    console.info(`[host] adaptive scale ${scaler.factor} (bandwidth ${Math.round((s.bandwidth || 0) / 1000)} kbps, queue ${Math.round(s.pacerMs || 0)} ms)`);
+    applyQuality(quality);
+  }
+  if (codecFirst === 'vp9' && /vp9/i.test(s.codec || '') && cpuWatch.update({ limitation: s.limitation, fps: s.fps })) {
+    console.info('[host] VP9 is too slow on this computer: switching to VP8');
+    codecFirst = 'vp8';
+    applyCodecs();
+    rtc.renegotiate();
+  }
+  rtc.sendControl({
+    type: 'host-stats',
+    encodeMs: s.encodeMs,
+    pacerMs: s.pacerMs,
+    fps: s.fps,
+    codec: s.codec,
+    encoder: s.encoder,
+    limitation: s.limitation,
+    bandwidth: s.bandwidth,
+    scale: currentScale(),
+  });
 }
 
 function sendInfo() {
@@ -158,15 +218,20 @@ function sendInfo() {
   });
 }
 
+async function recapture(display) {
+  const stream = await capture(display, false);
+  const track = stream.getVideoTracks()[0];
+  track.contentHint = QUALITY_PRESETS[quality].contentHint;
+  const old = videoSender.track;
+  await videoSender.replaceTrack(track);
+  old?.stop();
+}
+
 async function switchDisplay(displayId) {
   const target = displays.find((d) => d.displayId === displayId);
   if (!target || target === current || !videoSender) return;
   try {
-    const stream = await capture(target, false);
-    const track = stream.getVideoTracks()[0];
-    const old = videoSender.track;
-    await videoSender.replaceTrack(track);
-    old?.stop();
+    await recapture(target);
     current = target;
     api.send('host:set-display', current.displayId);
     await applyQuality(quality);
@@ -213,17 +278,28 @@ async function startHosting() {
   rtc.addEventListener('input', ({ detail }) => {
     if (perms.control) api.send('input:events', detail);
   });
-  rtc.addEventListener('control-open', () => sendInfo());
+  rtc.addEventListener('control-open', () => {
+    sendInfo();
+    api.send('host:cursor-resync');
+  });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
 
+  // Audio gets its own stream: in a shared stream the viewer would delay the
+  // picture to keep lip sync with the audio buffer (measured +60 ms). Viewers
+  // older than 1.1 can only display a single stream.
+  const separateStreams = versionAtLeast(init.peer.version, '1.1.0');
   for (const track of stream.getTracks()) {
-    const sender = rtc.pc.addTrack(track, stream);
+    const sender = rtc.pc.addTrack(track, separateStreams ? new MediaStream([track]) : stream);
     if (track.kind === 'video') videoSender = sender;
     else audioTrack = track;
   }
+  videoTransceiver = rtc.pc.getTransceivers().find((tr) => tr.sender === videoSender) || null;
+  applyCodecs();
+  scaler.reset(performance.now());
   await applyQuality(quality);
   rtc.ready();
+  timers.monitor = setInterval(monitor, 1000);
   timers.connect = setTimeout(() => {
     if (rtc.pc.connectionState !== 'connected') api.send('session:failed', 'ice-timeout');
   }, 60_000);
@@ -245,6 +321,7 @@ function onConnectionState(state) {
     if (!startedAt) {
       startedAt = Date.now();
       timers.clock = setInterval(() => { ui.timer.textContent = formatDuration(Date.now() - startedAt); }, 1000);
+      scaler.reset(performance.now());
     }
     applyQuality(quality);
     rtc.stats().then((s) => setStatus(s.relayed ? t('viewer.relayed') : t('viewer.direct')));
@@ -307,6 +384,10 @@ api.on('session:state', ({ state, perms: p }) => {
 });
 api.on('clipboard:local', (text) => {
   if (perms.clipboard && rtc?.pc.connectionState === 'connected') rtc.sendControl({ type: 'clipboard', text });
+});
+// Shape of the local mouse cursor, drawn by the viewer with zero delay.
+api.on('host:cursor', (msg) => {
+  if (perms.control) rtc?.sendControl(msg);
 });
 
 init = await api.invoke('session:init');

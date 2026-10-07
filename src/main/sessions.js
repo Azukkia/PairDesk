@@ -4,10 +4,12 @@
 
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
-import { screen, desktopCapturer, powerSaveBlocker } from 'electron';
+import { screen, desktopCapturer, powerSaveBlocker, nativeImage } from 'electron';
 import { PROTOCOL_VERSION, isValidId } from '../shared/protocol.js';
 import { derivePrs } from './crypto/prs.js';
 import { SignalingError } from './signaling/signaling.js';
+import { PointerSequencer } from './input/pointer-seq.js';
+import { createCursorTracker } from './cursor.js';
 
 const clamp01 = (v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
 const clampWheel = (v) => (Number.isFinite(v) ? Math.max(-2400, Math.min(2400, v)) : 0);
@@ -150,6 +152,7 @@ export class SessionManager extends EventEmitter {
       peerName: session.peerName,
       caps,
       peerPlatform: session.info?.platform || '',
+      peerVersion: session.info?.appVersion || '',
       win,
       queue: [],
       ready: false,
@@ -216,7 +219,9 @@ export class SessionManager extends EventEmitter {
       peerId: session.peerId,
       peerName: session.peerName || this.t('host.unknownName'),
       peerPlatform: session.peerPlatform,
+      peerVersion: session.peerVersion || '',
       credential: session.credential,
+      pointer: new PointerSequencer(),
       state: needConsent ? 'pending' : 'active',
       perms: this.#hostPerms(),
       queue: [],
@@ -262,6 +267,7 @@ export class SessionManager extends EventEmitter {
       host.powerBlocker = null;
     }
     this.#setClipboard(host, host.perms.clipboard);
+    if (host.perms.control) this.#startCursor(host);
     if (!this.windows.isMainVisible()) {
       this.notify(this.t('notify.incomingTitle'), this.t('notify.incomingBody', { name: host.peerName, id: host.peerId }));
     }
@@ -322,7 +328,7 @@ export class SessionManager extends EventEmitter {
     const rect = this.#displayRect(host.displayId);
     const move = (nx, ny) => inj.moveTo(rect.x + clamp01(nx) * (rect.width - 1), rect.y + clamp01(ny) * (rect.height - 1));
     for (const ev of events.slice(0, 200)) {
-      if (!Array.isArray(ev)) continue;
+      if (!Array.isArray(ev) || !host.pointer.accept(ev)) continue;
       switch (ev[0]) {
         case 'm':
           move(ev[1], ev[2]);
@@ -347,12 +353,38 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  // The viewer draws its own cursor (zero delay) with the shape of ours.
+  async #startCursor(host) {
+    this.cursorTracker ??= createCursorTracker({
+      log: this.log,
+      encodePng: (bgra, width, height) => nativeImage.createFromBitmap(bgra, { width, height }).toDataURL(),
+      scale: () => screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).scaleFactor || 1,
+    }).catch((err) => {
+      this.log.warn(`[cursor] ${err.message}`);
+      return null;
+    });
+    const tracker = await this.cursorTracker;
+    if (!tracker || this.host !== host || host.state !== 'active') return;
+    tracker.start((msg) => {
+      if (this.host === host && host.win && !host.win.isDestroyed()) host.win.webContents.send('host:cursor', msg);
+    });
+  }
+
+  async #stopCursor() {
+    (await this.cursorTracker)?.stop();
+  }
+
+  resyncCursor(ctx) {
+    if (ctx !== this.host) return;
+    this.cursorTracker?.then((tracker) => tracker?.resync());
+  }
+
   // ───────────────────────── renderer plumbing ─────────────────────────
 
   initPayload(ctx) {
     const common = {
       sid: ctx.sid,
-      peer: { id: ctx.peerId, name: ctx.peerName, platform: ctx.peerPlatform },
+      peer: { id: ctx.peerId, name: ctx.peerName, platform: ctx.peerPlatform, version: ctx.peerVersion },
       iceServers: this.network.iceServers,
       platform: process.platform,
     };
@@ -419,6 +451,7 @@ export class SessionManager extends EventEmitter {
     this.host = null;
     clearTimeout(host.consentTimer);
     this.injector.releaseAll();
+    this.#stopCursor();
     if (notifyPeer) this.signaling.close(host.sid, reason);
     if (host.powerBlocker != null) powerSaveBlocker.stop(host.powerBlocker);
     this.#setClipboard(host, false);

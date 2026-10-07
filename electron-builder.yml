@@ -84,6 +84,7 @@ deb:
   depends:
     - libxtst6
     - libx11-6
+    - libxfixes3
     - libnotify4
     - libnss3
     - libasound2 | libasound2t64

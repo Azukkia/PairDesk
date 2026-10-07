@@ -225,10 +225,15 @@ const fr = {
   'viewer.sound': 'Son',
   'viewer.mute': 'Couper le son',
   'viewer.unmute': 'Activer le son',
+  'viewer.delay': 'Délai ≈ {ms} ms',
+  'viewer.delayHelp': "Délai estimé entre l'écran du partenaire et le vôtre (réseau + encodage + décodage).",
 
   'quality.speed': 'Vitesse optimisée',
   'quality.balanced': 'Équilibrée',
   'quality.quality': 'Qualité optimisée',
+  'quality.speedHint': 'le plus fluide, 60 i/s',
+  'quality.balancedHint': 'net et réactif',
+  'quality.qualityHint': 'image la plus nette',
 
   'keys.ctrlAltDel': 'Ctrl+Alt+Suppr',
   'keys.ctrlShiftEsc': 'Gestionnaire des tâches (Ctrl+Maj+Échap)',
@@ -494,10 +499,15 @@ const en = {
   'viewer.sound': 'Sound',
   'viewer.mute': 'Mute',
   'viewer.unmute': 'Unmute',
+  'viewer.delay': 'Delay ≈ {ms} ms',
+  'viewer.delayHelp': "Estimated delay between your partner's screen and yours (network + encoding + decoding).",
 
   'quality.speed': 'Optimise speed',
   'quality.balanced': 'Balanced',
   'quality.quality': 'Optimise quality',
+  'quality.speedHint': 'smoothest, 60 fps',
+  'quality.balancedHint': 'sharp and responsive',
+  'quality.qualityHint': 'sharpest picture',
 
   'keys.ctrlAltDel': 'Ctrl+Alt+Del',
   'keys.ctrlShiftEsc': 'Task Manager (Ctrl+Shift+Esc)',
