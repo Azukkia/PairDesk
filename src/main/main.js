@@ -405,7 +405,9 @@ async function main() {
     if (target.startsWith(downloadsDir() + path.sep)) shell.showItemInFolder(target);
   });
 
-  if (E2E) handle('e2e:cursor', ['main', ...SESSION], () => injector.cursorPos());
+  if (E2E) {
+    handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...injector.cursorPos(), shape: await sessions.cursorShapeDebug() }));
+  }
 
   // ───────────── start ─────────────
 

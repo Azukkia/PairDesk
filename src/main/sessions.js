@@ -374,6 +374,11 @@ export class SessionManager extends EventEmitter {
     (await this.cursorTracker)?.stop();
   }
 
+  /** Diagnostics for the end-to-end tests. */
+  async cursorShapeDebug() {
+    return (await this.cursorTracker)?.inspect() ?? null;
+  }
+
   resyncCursor(ctx) {
     if (ctx !== this.host) return;
     this.cursorTracker?.then((tracker) => tracker?.resync());

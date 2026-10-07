@@ -104,6 +104,16 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
       lastRaw = null;
       sentImages = new Set();
     },
+    /** Diagnostics (tests): what the probe reports right now. */
+    inspect() {
+      try {
+        const cur = probe.read({ image: 'never' });
+        const { bgra, ...rest } = cur || {};
+        return { ...rest, lastKey, system: probe.systemCursors?.() };
+      } catch (err) {
+        return { error: err.message };
+      }
+    },
     stop() {
       clearInterval(timer);
       timer = null;

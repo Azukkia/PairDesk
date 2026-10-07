@@ -58,6 +58,8 @@ export function createWin32CursorProbe({ user32 = koffi.load('user32.dll') } = {
 
   return {
     systemCursorCount: () => byHandle.size,
+    /** Diagnostics: system cursor handles → CSS keyword. */
+    systemCursors: () => Object.fromEntries(byHandle),
     read() {
       info.cbSize = CB_SIZE; // _Inout_: cbSize must be set on input or the call fails
       if (!GetCursorInfo(info)) return null;

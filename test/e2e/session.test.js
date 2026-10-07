@@ -148,12 +148,19 @@ async function viewerPointFor(viewer, screenPoint, screenSize) {
 }
 
 /** 1.1+ on both sides: the controller's own cursor takes the host's cursor shape. */
-async function checkLocalCursor(viewer) {
-  const shape = await poll(() => viewer.evaluate(() => document.querySelector('#remote-screen').style.cursor || null), {
-    message: 'host cursor shape shown on the viewer',
-  });
+async function checkLocalCursor(viewer, host) {
+  const read = () => viewer.evaluate(() => document.querySelector('#remote-screen').style.cursor || null);
+  // Windows: the I-beam is a system cursor, reported by name. Elsewhere it may
+  // be a bitmap (Chromium cursors on X11 have no name).
+  const want = process.platform === 'win32' ? (s) => s === 'text' : (s) => Boolean(s);
+  let shape = null;
+  try {
+    await poll(async () => want((shape = await read())), { timeout: 8000, message: 'host cursor shape shown on the viewer' });
+  } catch (err) {
+    const debug = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor')).catch((e) => e.message);
+    throw new Error(`${err.message}: viewer has ${JSON.stringify(shape)}, host probe ${JSON.stringify(debug)}`);
+  }
   process.stderr.write(`viewer cursor over the host text field: ${shape.slice(0, 80)}\n`);
-  if (process.platform === 'win32') assert.equal(shape, 'text');
 }
 
 async function dumpDiagnostics(instances) {
@@ -274,7 +281,7 @@ async function scenario(host, ctrl) {
     message: `remote click focuses the field at ${JSON.stringify(field)}`,
   });
   // The controller's own cursor takes the host's cursor shape (I-beam over a text field).
-  if (hostRoot === root && ctrlRoot === root) await checkLocalCursor(viewer);
+  if (hostRoot === root && ctrlRoot === root) await checkLocalCursor(viewer, host);
   if (ctrlRoot === root) {
     const delay = await poll(() => viewer.evaluate(() => document.querySelector('.topbar .delay')?.textContent || null), {
       message: 'delay estimate shown',
