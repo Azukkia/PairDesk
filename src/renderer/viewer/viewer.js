@@ -3,6 +3,7 @@
 
 import { api, h, clear, icon, t, setLanguage, toast, showMenu } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
+import { createRemoteCursor } from './remote-cursor.js';
 import { KEYMAP, KEY_COMBOS } from '../shared/keymap.js';
 import { formatId } from '../shared/protocol.js';
 
@@ -30,6 +31,7 @@ const pressedKeys = new Set();
 const pressedButtons = new Set();
 let transfers = null;
 let chat = null;
+let remoteCursor = null;
 
 const canControl = () => st.connected && !st.ended && Boolean(init?.caps?.control);
 
@@ -44,6 +46,7 @@ function buildUI() {
   ui.dot = h('span', { class: 'dot connecting' });
   ui.name = h('b');
   ui.id = h('span', { class: 'id' });
+  ui.delay = h('span', { class: 'delay', title: t('viewer.delayHelp') });
   ui.stats = h('span', { class: 'stats' });
   ui.viewOnly = h('span', { class: 'badge warning', title: t('viewer.viewOnlyHelp'), hidden: true }, icon('eye', 'sm'), t('viewer.viewOnly'));
 
@@ -60,11 +63,14 @@ function buildUI() {
   ui.fileInput = h('input', { type: 'file', multiple: true, hidden: true, onchange: () => { sendFiles([...ui.fileInput.files]); ui.fileInput.value = ''; } });
 
   ui.topbar = h('header', { class: 'topbar' },
-    h('div', { class: 'peer' }, ui.dot, ui.name, ui.id, ui.viewOnly, ui.stats),
+    h('div', { class: 'peer' }, ui.dot, ui.name, ui.id, ui.viewOnly, ui.delay, ui.stats),
     h('div', { class: 'tools' }, ui.monitorBtn, ui.scaleBtn, ui.qualityBtn, ui.keysBtn, h('span', { class: 'sep' }),
       ui.clipBtn, ui.fileBtn, ui.chatBtn, ui.soundBtn, h('span', { class: 'sep' }), ui.fsBtn, ui.endBtn, ui.fileInput));
 
   ui.video = h('video', { id: 'remote-screen', autoplay: true, playsInline: true, muted: true });
+  // Sound has its own element: never tied to the picture's timing.
+  ui.audio = h('audio', { autoplay: true, hidden: true });
+  remoteCursor = createRemoteCursor(ui.video);
   ui.stage = h('main', { class: 'stage fit', tabindex: '0', id: 'stage' }, ui.video);
   ui.overlay = h('div', { class: 'overlay' });
   ui.stage.append(ui.overlay);
@@ -76,7 +82,7 @@ function buildUI() {
   ui.drop = h('div', { class: 'drop-hint', hidden: true }, t('viewer.dropHint'));
   ui.hotzone = h('div', { class: 'hotzone' });
 
-  clear(app, ui.topbar, ui.stage, ui.chat);
+  clear(app, ui.topbar, ui.stage, ui.chat, ui.audio);
   document.body.append(ui.drop, ui.hotzone);
   transfers = new TransferList();
   attachInput();
@@ -110,6 +116,7 @@ function refreshToolbar() {
   if (st.unread) ui.chatBtn.append(h('span', { class: 'count-badge' }, String(st.unread)));
   ui.chatBtn.classList.toggle('active', st.chatOpen);
   ui.stage.classList.toggle('control', canControl());
+  remoteCursor.setActive(canControl());
   clear(ui.endBtn, icon(st.ended ? 'x' : 'power', 'sm'), st.ended ? t('common.close') : t('viewer.disconnect'));
   ui.dot.className = `dot ${st.ended ? 'offline' : st.connected ? 'online' : 'connecting'}`;
 }
@@ -150,6 +157,12 @@ function startSession() {
   st.hadVideo = false;
   st.ended = null;
   st.hasAudio = false;
+  st.hostStats = null;
+  // pointerSeq keeps increasing across reconnections: a host session that
+  // outlived the connection must not take new moves for stale ones.
+  lastButtonSeq = 0;
+  lastMove = null;
+  remoteCursor.reset();
   rtc = new RtcSession({ role: 'viewer', iceServers: init.iceServers });
   rtc.acceptFile = async ({ name, size }) => {
     const res = await api.invoke('files:begin', { name, size });
@@ -157,13 +170,16 @@ function startSession() {
     return { ...res, view: transfers.add(res.name, size, 'in') };
   };
   rtc.addEventListener('track', ({ detail: event }) => {
-    const stream = event.streams[0] || new MediaStream([event.track]);
-    if (ui.video.srcObject !== stream) ui.video.srcObject = stream;
-    if (event.track.kind === 'audio') {
+    const { track } = event;
+    if (track.kind === 'video') {
+      ui.video.srcObject = new MediaStream([track]);
+      ui.video.play().catch(() => {});
+    } else if (track.kind === 'audio') {
       st.hasAudio = true;
-      ui.video.muted = st.muted;
+      ui.audio.srcObject = new MediaStream([track]);
+      ui.audio.muted = st.muted;
+      ui.audio.play().catch(() => {});
     }
-    ui.video.play().catch(() => {});
     refreshToolbar();
   });
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
@@ -268,6 +284,18 @@ function onControl(msg) {
     case 'clipboard':
       if (st.clipboard && typeof msg.text === 'string') api.send('clipboard:remote', msg.text);
       break;
+    case 'cursor':
+      remoteCursor.handle(msg);
+      break;
+    case 'host-stats': {
+      const num = (v) => (Number.isFinite(v) ? v : null);
+      const str = (v) => (typeof v === 'string' ? v.slice(0, 60) : '');
+      st.hostStats = {
+        encodeMs: num(msg.encodeMs), pacerMs: num(msg.pacerMs), encoder: str(msg.encoder), limitation: str(msg.limitation),
+        at: performance.now(),
+      };
+      break;
+    }
     case 'bye':
       showEnded('peer');
       break;
@@ -281,13 +309,31 @@ function startStats() {
   timers.stats = setInterval(async () => {
     if (!rtc || st.ended) return;
     const s = await rtc.stats();
+    // Estimated screen-to-screen delay: half the round trip + what the host
+    // reports (encoding, send queue) + what happens here (buffer, decoding)
+    // + about one frame to display.
+    const host = st.hostStats && performance.now() - st.hostStats.at < 3000 ? st.hostStats : {};
+    if (s.rtt != null) {
+      const ms = Math.round(s.rtt / 2 + (host.encodeMs || 0) + (host.pacerMs || 0) + (s.jitterBufferMs || 0) + (s.decodeMs || 0) + 16);
+      ui.delay.textContent = t('viewer.delay', { ms });
+      ui.delay.className = `delay ${ms < 150 ? 'good' : ms < 350 ? 'warn' : 'bad'}`;
+    }
     const parts = [];
     if (s.relayed != null) parts.push(s.relayed ? t('viewer.relayed') : t('viewer.direct'));
-    if (s.rtt != null) parts.push(`${s.rtt} ms`);
     if (s.fps != null) parts.push(t('viewer.fps', { n: Math.round(s.fps) }));
     if (s.bitrate != null) parts.push(`${(s.bitrate / 1e6).toFixed(1)} Mb/s`);
     if (s.width) parts.push(`${s.width}×${s.height}`);
+    if (s.codec) parts.push(s.codec);
     ui.stats.textContent = parts.join(' · ');
+    ui.stats.title = [
+      s.rtt != null ? `RTT ${s.rtt} ms` : '',
+      host.encodeMs != null ? `encode ${host.encodeMs.toFixed(1)} ms` : '',
+      host.pacerMs != null ? `queue ${host.pacerMs.toFixed(0)} ms` : '',
+      s.jitterBufferMs != null ? `buffer ${s.jitterBufferMs.toFixed(0)} ms` : '',
+      s.decodeMs != null ? `decode ${s.decodeMs.toFixed(1)} ms` : '',
+      host.encoder ? `${host.encoder}` : '',
+      host.limitation && host.limitation !== 'none' ? `limit: ${host.limitation}` : '',
+    ].filter(Boolean).join(' · ');
   }, 1000);
 }
 
@@ -303,7 +349,7 @@ function monitorMenu(anchor) {
 
 function qualityMenu(anchor) {
   showMenu(anchor, [{ title: t('viewer.quality') }, ...['speed', 'balanced', 'quality'].map((mode) => ({
-    label: t(`quality.${mode}`),
+    label: `${t(`quality.${mode}`)} — ${t(`quality.${mode}Hint`)}`,
     checked: st.quality === mode,
     onClick: () => {
       st.quality = mode;
@@ -324,7 +370,7 @@ function keysMenu(anchor) {
 function sendCombo(codes) {
   if (!canControl()) return;
   const events = [...codes.map((c) => ['k', c, 1]), ...[...codes].reverse().map((c) => ['k', c, 0])];
-  flushInput(events);
+  sendReliable(events);
   ui.stage.focus();
 }
 
@@ -340,8 +386,11 @@ function setScale(scale) {
 function applyVideoSize() {
   const v = ui.video;
   if (st.scale === 'original' && v.videoWidth) {
-    v.style.width = `${v.videoWidth / devicePixelRatio}px`;
-    v.style.height = `${v.videoHeight / devicePixelRatio}px`;
+    // The host may send a reduced picture on slow links: "actual size" is the
+    // size of the remote screen, not of the video.
+    const d = st.displays.find((x) => x.id === st.current);
+    v.style.width = `${(d?.width || v.videoWidth) / devicePixelRatio}px`;
+    v.style.height = `${(d?.height || v.videoHeight) / devicePixelRatio}px`;
   } else {
     v.style.width = '';
     v.style.height = '';
@@ -356,7 +405,7 @@ function setClipboard(enabled) {
 
 function setMuted(muted) {
   st.muted = muted;
-  ui.video.muted = muted;
+  ui.audio.muted = muted;
   refreshToolbar();
 }
 
@@ -391,31 +440,31 @@ function sendFiles(files) {
 
 // ───────────────────────────── input capture ─────────────────────────────
 
-let inputQueue = [];
-let pendingMove = null;
-let moveScheduled = false;
+// Mouse moves go out immediately on the "latest wins" channel, each with a
+// sequence number and the number of the last click/release before it (the
+// host drops moves that overtook a click still being retransmitted); clicks,
+// keys and wheel use the reliable channel. When the mouse rests, its final
+// position is also sent reliably in case the last move was lost.
+let pointerSeq = 0;
+let lastButtonSeq = 0;
+let lastMove = null;
 
-function flushInput(extra = []) {
-  if (pendingMove) {
-    inputQueue.push(pendingMove);
-    pendingMove = null;
-  }
-  inputQueue.push(...extra);
-  if (inputQueue.length) rtc?.sendInput(inputQueue);
-  inputQueue = [];
+function sendReliable(events) {
+  rtc?.sendInput(events);
 }
 
-function queueMove(x, y) {
-  pendingMove = ['m', x, y];
-  if (!moveScheduled) {
-    // Coalesce mouse moves (~120 Hz). A timer is used instead of
-    // requestAnimationFrame, which stops when the window is occluded.
-    moveScheduled = true;
-    setTimeout(() => {
-      moveScheduled = false;
-      flushInput();
-    }, 8);
-  }
+function sendMove(x, y) {
+  if (lastMove && lastMove[0] === x && lastMove[1] === y) return;
+  lastMove = [x, y, ++pointerSeq];
+  rtc?.sendPointer([['m', x, y, pointerSeq, lastButtonSeq]]);
+  clearTimeout(timers.settle);
+  timers.settle = setTimeout(() => {
+    if (!lastMove || lastMove[0] !== x || lastMove[1] !== y) return;
+    // New number: the reliable copy queues behind any late click and must not
+    // be dropped as a duplicate of the lost move.
+    lastMove = [x, y, ++pointerSeq];
+    sendReliable([['m', x, y, pointerSeq]]);
+  }, 120);
 }
 
 const round4 = (v) => Math.round(v * 10000) / 10000;
@@ -447,7 +496,7 @@ function mapPoint(e, clamp = false) {
 }
 
 function releaseAll() {
-  if (pressedKeys.size || pressedButtons.size) flushInput([['r']]);
+  if (pressedKeys.size || pressedButtons.size) sendReliable([['r']]);
   pressedKeys.clear();
   pressedButtons.clear();
 }
@@ -467,21 +516,27 @@ function attachInput() {
     const p = mapPoint(e);
     if (!p) return;
     pressedButtons.add(e.button);
-    flushInput([['d', e.button, p[0], p[1]]]);
+    lastMove = [p[0], p[1], ++pointerSeq];
+    lastButtonSeq = pointerSeq;
+    sendReliable([['d', e.button, p[0], p[1], pointerSeq]]);
   });
   window.addEventListener('mouseup', (e) => {
     if (!pressedButtons.has(e.button)) return;
     e.preventDefault();
     pressedButtons.delete(e.button);
     const p = mapPoint(e, true);
-    flushInput([p ? ['u', e.button, p[0], p[1]] : ['u', e.button]]);
+    if (p) {
+      lastMove = [p[0], p[1], ++pointerSeq];
+      lastButtonSeq = pointerSeq;
+    }
+    sendReliable([p ? ['u', e.button, p[0], p[1], pointerSeq] : ['u', e.button]]);
   });
   window.addEventListener('mousemove', (e) => {
     if (!canControl()) return;
     if (!pressedButtons.size && !ui.stage.contains(e.target)) return;
     if (e.target.closest?.('.overlay')) return;
     const p = mapPoint(e, pressedButtons.size > 0);
-    if (p) queueMove(p[0], p[1]);
+    if (p) sendMove(p[0], p[1]);
   });
   ui.stage.addEventListener('wheel', (e) => {
     if (!canControl()) return;
@@ -489,7 +544,19 @@ function attachInput() {
     const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : wheelFactor;
     const dx = Math.round(e.deltaX * unit);
     const dy = Math.round(e.deltaY * unit);
-    if (dx || dy) flushInput([['w', dx, dy]]);
+    if (!dx && !dy) return;
+    // Scroll where the pointer is, even if its last move was lost: the
+    // position goes first on the same reliable channel.
+    // Like a click, the wheel is numbered: moves made after it wait for it.
+    const p = mapPoint(e);
+    if (p) {
+      lastMove = [p[0], p[1], ++pointerSeq];
+      lastButtonSeq = pointerSeq;
+      clearTimeout(timers.settle);
+      sendReliable([['m', p[0], p[1], pointerSeq], ['w', dx, dy, pointerSeq]]);
+    } else {
+      sendReliable([['w', dx, dy]]);
+    }
   }, { passive: false });
   ui.stage.addEventListener('contextmenu', (e) => e.preventDefault());
   // Prevent "back"/"forward" mouse buttons from doing anything locally.
@@ -502,7 +569,7 @@ function attachInput() {
     e.stopPropagation();
     if (down) pressedKeys.add(e.code);
     else if (!pressedKeys.delete(e.code)) return;
-    flushInput([['k', e.code, down ? 1 : 0]]);
+    sendReliable([['k', e.code, down ? 1 : 0]]);
   };
   window.addEventListener('keydown', onKey(true), true);
   window.addEventListener('keyup', onKey(false), true);

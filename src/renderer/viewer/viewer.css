@@ -14,6 +14,11 @@ body.viewer { background: #05070d; overflow: hidden; }
 .topbar .peer b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 40px; max-width: 240px; }
 .topbar .peer .id { color: var(--text-faint); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .topbar .stats { flex: 1; min-width: 0; font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.topbar .delay { flex: none; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.topbar .delay:empty { display: none; }
+.topbar .delay.good { color: var(--success); background: var(--success-soft); }
+.topbar .delay.warn { color: var(--warning); background: var(--warning-soft); }
+.topbar .delay.bad { color: var(--danger); background: var(--danger-soft); }
 .topbar .tools { display: flex; align-items: center; gap: 2px; }
 .topbar .tools .sep { width: 1px; height: 24px; background: var(--border); margin: 0 6px; }
 .topbar .tools .btn.small { height: 32px; }

@@ -39,6 +39,14 @@ app.setAppUserModelId(APP_ID);
 // Expose real local addresses to WebRTC (instead of mDNS names) so that LAN
 // connections work everywhere.
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+// Display each received frame as soon as it is decoded instead of buffering it
+// to smooth out network jitter: measured −100 ms on a good link and the end of
+// the 1–2 s delays caused by the jitter buffer on slower links. The "Send"
+// variant also asks the other side to do so (useful with older PairDesk).
+app.commandLine.appendSwitch(
+  'force-fieldtrials',
+  'WebRTC-ForcePlayoutDelay/min_ms:0,max_ms:0/WebRTC-ForceSendPlayoutDelay/min_ms:0,max_ms:0/',
+);
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
@@ -368,6 +376,7 @@ async function main() {
   handle('host:consent', ['host'], (ctx, accept) => sessions.hostConsent(ctx.sid, Boolean(accept)));
   handle('host:displays', ['host'], () => sessions.listDisplays());
   on('host:set-display', ['host'], (ctx, displayId) => sessions.setHostDisplay(ctx, displayId));
+  on('host:cursor-resync', ['host'], (ctx) => sessions.resyncCursor(ctx));
   on('input:events', ['host'], (ctx, events) => sessions.injectInput(ctx, events));
   handle('host:end', ['host'], (ctx) => sessions.endSession(ctx.sid, 'host-ended'));
   on('host:resize', ['host'], (ctx, height) => windows.resizeHost(ctx.win, Number(height) || 200));
@@ -396,7 +405,9 @@ async function main() {
     if (target.startsWith(downloadsDir() + path.sep)) shell.showItemInFolder(target);
   });
 
-  if (E2E) handle('e2e:cursor', ['main', ...SESSION], () => injector.cursorPos());
+  if (E2E) {
+    handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...injector.cursorPos(), shape: await sessions.cursorShapeDebug() }));
+  }
 
   // ───────────── start ─────────────
 

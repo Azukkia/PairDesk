@@ -16,13 +16,13 @@ const INVOKE = new Set([
 ]);
 
 const SEND = new Set([
-  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'input:events', 'host:resize',
+  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'host:cursor-resync', 'input:events', 'host:resize',
   'clipboard:remote', 'files:chunk', 'files:abort',
 ]);
 
 const RECEIVE = new Set([
   'app:state', 'app:navigate', 'app:deeplink', 'connect:status',
-  'session:signal', 'session:ended', 'session:state', 'clipboard:local',
+  'session:signal', 'session:ended', 'session:state', 'clipboard:local', 'host:cursor',
 ]);
 
 contextBridge.exposeInMainWorld('pairdesk', {

@@ -18,7 +18,7 @@ Ces liens sont permanents : ils pointent toujours vers la dernière version publ
 
 | | |
 |---|---|
-| **Contrôle à distance** | Image de l'écran en temps réel, souris (clics, molette, glisser), clavier (y compris AZERTY, touches mortes, AltGr), combinaisons spéciales (Alt+Tab, Win+R, Ctrl+Maj+Échap…), choix de l'écran si plusieurs moniteurs, plein écran, ajustement ou taille réelle, 3 niveaux de qualité. |
+| **Contrôle à distance** | Image de l'écran en temps réel, souris (clics, molette, glisser), clavier (y compris AZERTY, touches mortes, AltGr), combinaisons spéciales (Alt+Tab, Win+R, Ctrl+Maj+Échap…), choix de l'écran si plusieurs moniteurs, plein écran, ajustement ou taille réelle, 3 niveaux de qualité. Le **curseur suit votre souris sans aucun retard** (c'est votre propre curseur, qui prend la forme de celui de l'ordinateur distant : flèche, texte, main…). |
 | **Échanges** | Transfert de fichiers dans les deux sens (bouton ou glisser-déposer, enregistrés dans `Téléchargements\PairDesk`), discussion instantanée, presse-papiers synchronisé, son de l'ordinateur distant (Windows). |
 | **Accès non surveillé** | Mot de passe personnel permanent + démarrage automatique avec Windows : connectez-vous à vos machines à tout moment. Mots de passe mémorisés par partenaire (chiffrés par Windows). |
 | **Contrôle par l'utilisateur** | Panneau de session toujours visible sur l'ordinateur contrôlé (qui est connecté, durée, bouton « Terminer »), demande d'acceptation optionnelle, mode « affichage seul », réception de fichiers et presse-papiers désactivables. |
@@ -60,9 +60,22 @@ Le workflow peut aussi être lancé à la main (onglet *Actions → Release → 
 ## Réseau et fiabilité
 
 - **Mise en relation** : par défaut, les deux PairDesk se trouvent via plusieurs relais MQTT publics en parallèle (aucun serveur à installer). Ces relais ne voient que des messages chiffrés et ne peuvent ni lire la session, ni deviner le mot de passe, ni se faire passer pour votre partenaire.
-- **Session** : l'image, la souris, le clavier et les fichiers passent **directement** d'un ordinateur à l'autre (WebRTC, traversée de NAT par STUN). La barre d'état de la fenêtre de contrôle indique « Direct (P2P) », la latence et le débit.
+- **Session** : l'image, la souris, le clavier et les fichiers passent **directement** d'un ordinateur à l'autre (WebRTC, traversée de NAT par STUN). La barre d'état de la fenêtre de contrôle indique « Direct (P2P) », le **délai estimé** entre les deux écrans (pastille verte/orange/rouge), le nombre d'images par seconde, le débit et le codec (survolez-la pour le détail).
 - **Réseaux très restrictifs** (certaines entreprises, 4G/5G) : si la connexion directe est impossible, il faut un relais **TURN** — *Paramètres → Réseau → Relais TURN* (par exemple le TURN gratuit de Cloudflare, ou votre propre coturn).
 - **Serveur privé (recommandé pour un usage intensif ou professionnel)** : les relais publics sont gérés par des tiers sans garantie de disponibilité. Vous pouvez héberger votre propre serveur PairDesk (une petite application Node.js, Docker fourni) qui fournit aussi des identifiants TURN : voir [`server/README.md`](server/README.md). Indiquez ensuite son adresse dans *Paramètres → Réseau → Serveur PairDesk privé* sur les deux ordinateurs, ou dans `pairdesk.config.json` (`defaultServerUrl`) pour qu'elle soit intégrée aux prochaines versions.
+
+## Faible latence
+
+PairDesk 1.1 réduit le délai de l'image de 1-2 s à quelques centaines de millisecondes, même sur une connexion lente :
+
+- **Aucun tampon de lecture** côté contrôleur : chaque image est affichée dès qu'elle est décodée (au lieu d'attendre ~200 ms et plus quand le réseau varie).
+- **Codec VP9** pour l'écran (texte net à 25-30 i/s là où VP8 tombait à 2-4 i/s), avec retour automatique à VP8 si l'ordinateur distant est trop lent pour l'encoder.
+- **Résolution adaptative** : si le débit montant de l'ordinateur distant est faible, l'image est envoyée en résolution réduite (÷1,5 ou ÷2) plutôt que d'accumuler des secondes de retard, puis revient en pleine résolution dès que le réseau le permet.
+- **Souris prioritaire** : les mouvements passent par un canal dédié sans retransmission (une position perdue est remplacée par la suivante, elle ne bloque jamais les autres), les clics et le clavier par un canal fiable ; les transferts de fichiers et le son ne peuvent plus retarder la souris ni l'image.
+
+Mesures (ordinateur distant en 1080p, lien simulé) : avec 1,2 Mb/s en envoi, délai médian **617 → 217 ms** et 95ᵉ centile **1,6 s → 0,35 s** (1,7 → 26 images/s) ; avec 4 Mb/s, médian **417 → 184 ms**.
+
+Les niveaux de qualité : *Vitesse optimisée* (le plus fluide, 60 i/s, résolution réduite), *Équilibrée* (par défaut : net et réactif) et *Qualité optimisée* (image la plus nette, pour les connexions rapides).
 
 ## Sécurité — comment ça marche
 
@@ -104,7 +117,8 @@ src/main/        processus principal Electron
   sessions.js      sessions entrantes/sortantes, injection des entrées
   signaling/       protocole de connexion (CPace, messages chiffrés), transports MQTT et WebSocket
   crypto/          CPace, canal AES-GCM, dérivation du mot de passe
-  input/           injection souris/clavier : Windows (SendInput) et Linux (XTest)
+  input/           injection souris/clavier (SendInput, XTest) et forme du curseur (GetCursorInfo, XFixes)
+  cursor.js        suivi de la forme du curseur de l'hôte
   updater.js       mises à jour automatiques (electron-updater)
 src/renderer/    interfaces (HTML/CSS/JS sans framework)
   main/            fenêtre principale

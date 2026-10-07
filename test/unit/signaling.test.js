@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { Signaling, AuthLimiter } from '../../src/main/signaling/signaling.js';
-import { MemoryBus, tick } from './helpers.js';
+import { MemoryBus, tick, waitUntil } from './helpers.js';
 
 const HOST = '123456789';
 const CTRL = '987654321';
@@ -71,7 +71,7 @@ test('wrong password is rejected and counted', async () => {
   const failures = [];
   host.on('auth-failed', (e) => failures.push(e));
   await assert.rejects(ctrl.connect(HOST, randomBytes(32)), { code: 'auth' });
-  await tick(20);
+  await waitUntil(() => failures.length > 0);
   // The controller detects the mismatch itself and aborts: the attempt still
   // counts on the host side, so guessing is rate limited.
   assert.equal(limiter.recentFailures, 1);
@@ -91,9 +91,9 @@ test('a forged confirmation is counted as a failure and locks out brute force', 
     const { cpaceShare, channelIdentifier } = await import('../../src/main/crypto/cpace.js');
     const { share } = cpaceShare(randomBytes(32), channelIdentifier('555555555', HOST), sid);
     await attacker.send(HOST, { t: 'hello', sid, v: 1, ya: Buffer.from(share).toString('base64url') });
-    await tick(20);
+    await waitUntil(() => replies.length >= 2 * i + 1);
     await attacker.send(HOST, { t: 'confirm', sid, idx: 0, tag: Buffer.alloc(32).toString('base64url'), intro: {} });
-    await tick(20);
+    await waitUntil(() => replies.length >= 2 * i + 2);
   }
   assert.equal(limiter.recentFailures, 3);
   assert.ok(limiter.lockedFor() > 0);
@@ -154,7 +154,7 @@ test('version mismatch is reported', async () => {
   const replies = [];
   t.on('message', ({ data }) => replies.push(data));
   await t.send(HOST, { t: 'hello', sid: 'some-session-x', v: 99, ya: Buffer.from(temp).toString('base64url') });
-  await tick(20);
+  await waitUntil(() => replies.length > 0);
   assert.equal(replies[0].t, 'denied');
   assert.equal(replies[0].reason, 'version');
 });

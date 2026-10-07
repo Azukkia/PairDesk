@@ -44,3 +44,12 @@ export class MemoryTransport extends EventEmitter {
 }
 
 export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+/** Waits until `fn()` is truthy (CI machines can be slow: no fixed delays). */
+export async function waitUntil(fn, { timeout = 5000, interval = 5 } = {}) {
+  const deadline = Date.now() + timeout;
+  while (!fn()) {
+    if (Date.now() > deadline) throw new Error('waitUntil: timed out');
+    await tick(interval);
+  }
+}
