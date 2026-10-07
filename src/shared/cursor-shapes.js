@@ -2,6 +2,13 @@
 // Shared by the host main process (detection) and the viewer (validation).
 // Must stay free of Node/DOM specific APIs (like src/shared/protocol.js).
 
+/**
+ * Custom cursor bitmaps kept per session, least recently used dropped first.
+ * Host and viewer apply the same rule to the same ordered message stream, so
+ * the host knows exactly which bitmaps the viewer still has.
+ */
+export const MAX_CURSOR_IMAGES = 64;
+
 /** CSS keywords the viewer accepts in a {type:'cursor'} message. */
 export const CSS_CURSORS = new Set([
   'default', 'none', 'text', 'vertical-text', 'pointer', 'wait', 'progress', 'crosshair', 'help',

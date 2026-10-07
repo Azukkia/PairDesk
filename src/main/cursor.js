@@ -9,6 +9,7 @@
 //       messages only carry the id.
 
 import crypto from 'node:crypto';
+import { MAX_CURSOR_IMAGES } from '../shared/cursor-shapes.js';
 
 const MAX_CUSTOM = 128; // Chromium ignores bigger CSS cursor images
 
@@ -41,7 +42,7 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
   if (!probe) return null;
   let timer = null;
   let lastKey = null;
-  let sentImages = new Set();
+  let sentImages = new Set(); // ids the viewer has, least recently used first
   let send = null;
 
   function message(cur) {
@@ -56,9 +57,13 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
       .digest('base64url')
       .slice(0, 16);
     const msg = { type: 'cursor', shape: 'custom', id, hot: [cur.xhot, cur.yhot], scale: scale() };
-    if (!sentImages.has(id)) {
+    // Same cache rule as the viewer (remote-cursor.js).
+    if (sentImages.delete(id)) {
+      sentImages.add(id);
+    } else {
       msg.png = encodePng(cur.bgra, cur.width, cur.height);
       sentImages.add(id);
+      if (sentImages.size > MAX_CURSOR_IMAGES) sentImages.delete(sentImages.values().next().value);
     }
     return { key: `custom:${id}`, msg };
   }

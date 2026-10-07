@@ -26,6 +26,11 @@ fs.mkdirSync(artifacts, { recursive: true });
 // the sources (e.g. dist/win-unpacked/PairDesk.exe).
 const packaged = process.env.PAIRDESK_PACKAGED_EXE ? path.resolve(process.env.PAIRDESK_PACKAGED_EXE) : null;
 
+// PAIRDESK_E2E_HOST_APP / PAIRDESK_E2E_CTRL_APP run one side from another
+// source tree (e.g. a checkout of the previous release) to test compatibility.
+const hostRoot = process.env.PAIRDESK_E2E_HOST_APP ? path.resolve(process.env.PAIRDESK_E2E_HOST_APP) : root;
+const ctrlRoot = process.env.PAIRDESK_E2E_CTRL_APP ? path.resolve(process.env.PAIRDESK_E2E_CTRL_APP) : root;
+
 // PAIRDESK_E2E_TRANSPORT=mqtt exercises the default "public relays" mode
 // with a local MQTT broker instead of the PairDesk server.
 const useMqtt = process.env.PAIRDESK_E2E_TRANSPORT === 'mqtt';
@@ -57,15 +62,15 @@ async function startSignaling() {
   };
 }
 
-async function launch(name, signalingEnv, extraEnv = {}) {
+async function launch(name, signalingEnv, appRoot = root) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), `pd-${name}-`));
   const downloads = path.join(profile, 'downloads');
-  const args = packaged ? [`--pairdesk-profile=${profile}`] : [root, `--pairdesk-profile=${profile}`];
+  const args = packaged ? [`--pairdesk-profile=${profile}`] : [appRoot, `--pairdesk-profile=${profile}`];
   if (process.platform === 'linux') args.push('--no-sandbox', '--disable-gpu');
   const app = await electron.launch({
     executablePath: packaged || electronPath,
     args,
-    env: { ...process.env, ...signalingEnv, PAIRDESK_E2E: '1', PAIRDESK_DEBUG: '1', PAIRDESK_DOWNLOADS_DIR: downloads, ...extraEnv },
+    env: { ...process.env, ...signalingEnv, PAIRDESK_E2E: '1', PAIRDESK_DEBUG: '1', PAIRDESK_DOWNLOADS_DIR: downloads },
     timeout: 60_000,
   });
   app.process().stderr.on('data', (d) => {
@@ -142,6 +147,15 @@ async function viewerPointFor(viewer, screenPoint, screenSize) {
   }, { screenPoint, screenSize });
 }
 
+/** 1.1+ on both sides: the controller's own cursor takes the host's cursor shape. */
+async function checkLocalCursor(viewer) {
+  const shape = await poll(() => viewer.evaluate(() => document.querySelector('#remote-screen').style.cursor || null), {
+    message: 'host cursor shape shown on the viewer',
+  });
+  process.stderr.write(`viewer cursor over the host text field: ${shape.slice(0, 80)}\n`);
+  if (process.platform === 'win32') assert.equal(shape, 'text');
+}
+
 async function dumpDiagnostics(instances) {
   for (const inst of instances) {
     for (const [i, page] of inst.app.windows().entries()) {
@@ -159,8 +173,8 @@ async function dumpDiagnostics(instances) {
 
 test('two PairDesk instances: connect, view, control, chat, files, disconnect', { timeout: 240_000 }, async (t) => {
   const signaling = await startSignaling();
-  const host = await launch('host', signaling.env);
-  const ctrl = await launch('ctrl', signaling.env);
+  const host = await launch('host', signaling.env, hostRoot);
+  const ctrl = await launch('ctrl', signaling.env, ctrlRoot);
   host.name = 'host';
   ctrl.name = 'ctrl';
   t.after(async () => {
@@ -260,16 +274,13 @@ async function scenario(host, ctrl) {
     message: `remote click focuses the field at ${JSON.stringify(field)}`,
   });
   // The controller's own cursor takes the host's cursor shape (I-beam over a text field).
-  const shape = await poll(() => viewer.evaluate(() => document.querySelector('#remote-screen').style.cursor || null), {
-    message: 'host cursor shape shown on the viewer',
-  });
-  process.stderr.write(`viewer cursor over the host text field: ${shape.slice(0, 80)}\n`);
-  if (process.platform === 'win32') assert.equal(shape, 'text');
-  // Estimated delay badge.
-  const delay = await poll(() => viewer.evaluate(() => document.querySelector('.topbar .delay')?.textContent || null), {
-    message: 'delay estimate shown',
-  });
-  process.stderr.write(`viewer ${delay}\n`);
+  if (hostRoot === root && ctrlRoot === root) await checkLocalCursor(viewer);
+  if (ctrlRoot === root) {
+    const delay = await poll(() => viewer.evaluate(() => document.querySelector('.topbar .delay')?.textContent || null), {
+      message: 'delay estimate shown',
+    });
+    process.stderr.write(`viewer ${delay}\n`);
+  }
   await viewer.keyboard.type('4815');
   await poll(async () => (await host.main.inputValue('#partner-id')).replace(/\s/g, '') === '4815', { message: 'remote typing' });
   await viewer.keyboard.press('Backspace');

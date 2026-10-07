@@ -153,7 +153,7 @@ async function applyQuality(mode) {
     scaler.reset(performance.now());
     if (preset.maxFramerate !== captureFps) {
       captureFps = preset.maxFramerate;
-      await recapture(current); // the capture rate is fixed when the track starts
+      await recapture(); // the capture rate is fixed when the track starts
     }
   }
   videoSender.track.contentHint = preset.contentHint;
@@ -218,25 +218,39 @@ function sendInfo() {
   });
 }
 
-async function recapture(display) {
-  const stream = await capture(display, false);
-  const track = stream.getVideoTracks()[0];
-  track.contentHint = QUALITY_PRESETS[quality].contentHint;
-  const old = videoSender.track;
-  await videoSender.replaceTrack(track);
-  old?.stop();
+// Captures run one at a time, each for the display wanted when it starts: a
+// quality change made during a display switch must not bring back the old
+// display (the viewer would see one screen while controlling the other).
+let captureChain = Promise.resolve();
+let captureTarget = null; // display the latest switch is heading to
+
+function recapture() {
+  const run = captureChain.then(async () => {
+    const stream = await capture(captureTarget || current, false);
+    const track = stream.getVideoTracks()[0];
+    track.contentHint = QUALITY_PRESETS[quality].contentHint;
+    const old = videoSender.track;
+    await videoSender.replaceTrack(track);
+    old?.stop();
+  });
+  captureChain = run.catch(() => {});
+  return run;
 }
 
 async function switchDisplay(displayId) {
   const target = displays.find((d) => d.displayId === displayId);
-  if (!target || target === current || !videoSender) return;
+  if (!target || target === (captureTarget || current) || !videoSender) return;
+  captureTarget = target;
   try {
-    await recapture(target);
+    await recapture();
+    if (captureTarget !== target) return; // a newer switch finishes the job
     current = target;
+    captureTarget = null;
     api.send('host:set-display', current.displayId);
     await applyQuality(quality);
     rtc.sendControl({ type: 'display-changed', current: current.displayId });
   } catch (err) {
+    if (captureTarget === target) captureTarget = null;
     console.error('display switch failed', err);
   }
 }

@@ -39,11 +39,15 @@ export class FilePacer {
     this.last = t;
   }
 
-  /** Milliseconds to wait before `bytes` may be sent (0 = now). */
-  delayFor(bytes) {
+  /**
+   * Milliseconds to wait before the next chunk may be sent (0 = now). The
+   * bucket works on debt: a chunk goes as soon as the previous ones are paid
+   * for, so chunks bigger than the burst allowance (slow rates) still go, and
+   * the average rate stays exact even when the caller wakes up late.
+   */
+  delayFor() {
     this.#refill();
-    const need = bytes * 8 - this.tokens;
-    return need <= 0 ? 0 : Math.ceil((need / this.rate) * 1000);
+    return this.tokens >= 0 ? 0 : Math.ceil((-this.tokens / this.rate) * 1000);
   }
 
   consume(bytes) {
@@ -52,7 +56,7 @@ export class FilePacer {
 
   async take(bytes) {
     for (;;) {
-      const wait = this.delayFor(bytes);
+      const wait = this.delayFor();
       if (wait <= 0) break;
       await new Promise((r) => setTimeout(r, Math.min(wait, 50)));
     }

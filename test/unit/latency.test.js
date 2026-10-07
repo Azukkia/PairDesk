@@ -126,15 +126,16 @@ test('cpu watch: needs a sustained CPU limitation with a low frame rate', () => 
 test('file pacer: token bucket rate and delay based rate control', () => {
   let now = 0;
   const p = new FilePacer({ initialBps: 4e6, now: () => now });
-  // 16 KiB at 4 Mbps ≈ 33 ms.
-  const d = p.delayFor(16384);
+  assert.equal(p.delayFor(), 0);
+  p.consume(16384);
+  // The next chunk waits until this one is paid for: 16 KiB at 4 Mbps ≈ 33 ms.
+  const d = p.delayFor();
   assert.ok(d >= 30 && d <= 35, `delay ${d}`);
   now += 40;
-  assert.equal(p.delayFor(16384), 0);
-  p.consume(16384);
+  assert.equal(p.delayFor(), 0);
   // Burst capped at 50 ms worth of tokens.
   now += 10_000;
-  p.delayFor(0);
+  p.delayFor();
   assert.ok(p.tokens <= p.rate * 0.05 + 1);
 
   // Queueing (RTT well above the base) lowers the rate, an empty queue raises it.
@@ -161,12 +162,46 @@ test('file pacer: token bucket rate and delay based rate control', () => {
   assert.equal(p.baseRtt, 300);
 });
 
+test('file pacer: slow rates still send (bucket goes into debt), at the right average', () => {
+  for (const rate of [5e5, 1.2e6, 2e6, 2.6e6, 8e6]) {
+    let now = 0;
+    const p = new FilePacer({ initialBps: rate, now: () => now });
+    p.rate = rate;
+    let sent = 0;
+    for (let step = 0; step < 60_000; step += 7) { // the caller wakes up late
+      now = step;
+      if (p.delayFor() === 0) {
+        p.consume(16384);
+        sent += 16384;
+      }
+    }
+    const bps = (sent * 8) / 60;
+    assert.ok(bps > rate * 0.95 && bps < rate * 1.05, `rate ${rate}: ${bps}`);
+  }
+});
+
 test('file pacer: take() waits for tokens', async () => {
   const p = new FilePacer({ initialBps: 8e6 });
   const t0 = performance.now();
   for (let i = 0; i < 5; i++) await p.take(16384); // 5 × 16 ms
   const elapsed = performance.now() - t0;
   assert.ok(elapsed >= 50 && elapsed < 400, `elapsed ${elapsed}`);
+});
+
+test('pointer sequencer: moves that overtook a click still in flight are dropped', () => {
+  const s = new PointerSequencer();
+  assert.ok(s.accept(['m', 0.1, 0.1, 1, 0]));
+  // Click at A (d 2, u 3) whose packets are late; moves 4-6 to C arrive first.
+  assert.ok(!s.accept(['m', 0.5, 0.5, 4, 3]), 'release not applied yet');
+  assert.ok(!s.accept(['m', 0.7, 0.7, 6, 3]));
+  assert.ok(s.accept(['d', 0, 0.1, 0.1, 2]));
+  assert.ok(!s.accept(['m', 0.7, 0.7, 6, 3]), 'press applied, release still missing');
+  assert.ok(s.accept(['u', 0, 0.1, 0.1, 3]));
+  // The reliable resting position (new number) restores C.
+  assert.ok(s.accept(['m', 0.7, 0.7, 7]));
+  assert.ok(s.accept(['m', 0.8, 0.8, 8, 3]));
+  // A viewer reconnecting to the same host session restarts its button numbers.
+  assert.ok(s.accept(['m', 0.9, 0.9, 9, 0]));
 });
 
 test('pointer sequencer: drops stale moves, keeps clicks and old viewers', () => {
@@ -259,6 +294,18 @@ test('cursor tracker: sends changes only, images once per id, resync', async () 
   await new Promise((r) => setTimeout(r, 30));
   assert.deepEqual(sent.at(-1), { type: 'cursor', shape: 'default' });
 
+  // Least recently used bitmaps are forgotten, like on the viewer: the
+  // bitmap is sent again when the shape comes back.
+  for (let i = 0; i < 70; i++) {
+    const other = Buffer.alloc(4 * 4 * 4, i + 1);
+    state = { serial: 100 + i, bgra: other, width: 4, height: 4, xhot: 0, yhot: 0 };
+    await new Promise((r) => setTimeout(r, 12));
+  }
+  state = { serial: 300, bgra: img, width: 4, height: 4, xhot: 1, yhot: 2 };
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(sent.at(-1).id, custom.id);
+  assert.ok(sent.at(-1).png, 'evicted bitmap sent again');
+
   // Resync: the current shape and the bitmap are sent again.
   state = { serial: 8, bgra: img, width: 4, height: 4, xhot: 1, yhot: 2 };
   await new Promise((r) => setTimeout(r, 30));
@@ -299,6 +346,14 @@ test('remote cursor (viewer): validates shapes and bitmaps', async () => {
   assert.equal(el.style.cursor, 'default', 'invalid data URL rejected');
   c.handle({ type: 'cursor', shape: 'custom', id: 'unknown' });
   assert.equal(el.style.cursor, 'default');
+  // LRU: a bitmap in use stays cached while 64 others come and go.
+  for (let i = 0; i < 100; i++) {
+    c.handle({ type: 'cursor', shape: 'custom', id: `f${i}`, png });
+    c.handle({ type: 'cursor', shape: 'custom', id: 'abc' });
+    assert.ok(el.style.cursor.startsWith('image-set'), `kept after ${i}`);
+  }
+  c.handle({ type: 'cursor', shape: 'custom', id: 'f0' });
+  assert.equal(el.style.cursor, 'default', 'least recently used dropped');
   c.reset();
   assert.equal(el.style.cursor, '', 'reset: back to the stylesheet cursor until the host reports');
   c.handle({ type: 'cursor', shape: 'custom', id: 'abc' });

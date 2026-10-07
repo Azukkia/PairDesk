@@ -30,6 +30,7 @@ export class RtcSession extends EventTarget {
     this.pendingCandidates = [];
     this.pacer = new FilePacer();
     this.sendingFiles = 0;
+    this.peerPongs = false; // the partner answers pings (1.1+): files can be paced
     this.pingTimer = null;
     this.fileWaiters = new Map();
     this.incomingFiles = new Map();
@@ -198,7 +199,10 @@ export class RtcSession extends EventTarget {
         this.sendControl({ type: 'pong', t: msg.t });
         return;
       case 'pong':
-        if (Number.isFinite(msg.t)) this.pacer.onRtt(performance.now() - msg.t);
+        if (Number.isFinite(msg.t)) {
+          this.peerPongs = true;
+          this.pacer.onRtt(performance.now() - msg.t);
+        }
         return;
       default:
         this.#emit('control', msg);
@@ -207,19 +211,27 @@ export class RtcSession extends EventTarget {
 
   // ───────────── sending files ─────────────
 
-  #waitFor(fid, types, timeoutMs) {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.fileWaiters.delete(fid);
-        resolve({ type: 'timeout' });
-      }, timeoutMs);
-      this.fileWaiters.set(fid, (msg) => {
-        if (!types.includes(msg.type)) return;
+  /** Resolves with the first `types` message for `fid`; the timeout can start later (startTimeout). */
+  #waitFor(fid, types, timeoutMs = null) {
+    let timer = null;
+    let finish;
+    const promise = new Promise((resolve) => {
+      finish = (msg) => {
         clearTimeout(timer);
-        this.fileWaiters.delete(fid);
+        if (this.fileWaiters.get(fid) === waiter) this.fileWaiters.delete(fid);
         resolve(msg);
-      });
+      };
     });
+    const waiter = (msg) => {
+      if (types.includes(msg.type)) finish(msg);
+    };
+    this.fileWaiters.set(fid, waiter);
+    promise.startTimeout = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => finish({ type: 'timeout' }), ms);
+    };
+    if (timeoutMs != null) promise.startTimeout(timeoutMs);
+    return promise;
   }
 
   async sendFile(file, view) {
@@ -232,7 +244,13 @@ export class RtcSession extends EventTarget {
       view.update({ status: reply.type === 'file-reject' ? 'rejected' : 'failed' });
       return false;
     }
-    const done = this.#waitFor(fid, ['file-done'], 10 * 60_000);
+    // Listen from the start (a receiver failing mid-way answers early), but
+    // only time out once everything is sent: slow links are not failures.
+    const done = this.#waitFor(fid, ['file-done']);
+    let early = null;
+    done.then((msg) => {
+      early = msg;
+    });
     if (file.size > 0) {
       const dc = this.pc.createDataChannel(`file:${fid}`, { ordered: true });
       dc.binaryType = 'arraybuffer';
@@ -243,6 +261,7 @@ export class RtcSession extends EventTarget {
         dc.onclose = reject;
       }).catch(() => null);
       if (dc.readyState !== 'open') {
+        done.startTimeout(0);
         view.update({ status: 'failed' });
         return false;
       }
@@ -250,7 +269,7 @@ export class RtcSession extends EventTarget {
       this.#startPings();
       try {
         while (offset < file.size) {
-          if (dc.readyState !== 'open') throw new Error('channel closed');
+          if (dc.readyState !== 'open' || early) throw new Error('transfer stopped');
           if (dc.bufferedAmount > HIGH_WATER) {
             await new Promise((resolve) => {
               const timer = setTimeout(resolve, 1000); // in case the event is missed
@@ -263,13 +282,16 @@ export class RtcSession extends EventTarget {
             continue;
           }
           const buf = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
-          await this.pacer.take(buf.byteLength);
+          // Peers older than 1.1 never answer pings: no pacing for them
+          // (plain buffer-based flow control, as before).
+          if (this.peerPongs) await this.pacer.take(buf.byteLength);
           if (dc.readyState !== 'open') throw new Error('channel closed');
           dc.send(buf);
           offset += buf.byteLength;
           view.update({ progress: offset / file.size });
         }
       } catch {
+        done.startTimeout(0);
         this.sendControl({ type: 'file-cancel', fid });
         view.update({ status: 'failed' });
         return false;
@@ -277,6 +299,7 @@ export class RtcSession extends EventTarget {
         this.#stopPings();
       }
     }
+    done.startTimeout(10 * 60_000);
     const result = await done;
     const ok = result.type === 'file-done' && result.ok;
     view.update({ status: ok ? 'sent' : 'failed', progress: 1 });

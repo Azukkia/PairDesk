@@ -158,7 +158,9 @@ function startSession() {
   st.ended = null;
   st.hasAudio = false;
   st.hostStats = null;
-  pointerSeq = 0;
+  // pointerSeq keeps increasing across reconnections: a host session that
+  // outlived the connection must not take new moves for stale ones.
+  lastButtonSeq = 0;
   lastMove = null;
   remoteCursor.reset();
   rtc = new RtcSession({ role: 'viewer', iceServers: init.iceServers });
@@ -439,10 +441,12 @@ function sendFiles(files) {
 // ───────────────────────────── input capture ─────────────────────────────
 
 // Mouse moves go out immediately on the "latest wins" channel, each with a
-// sequence number; clicks, keys and wheel use the reliable channel. When the
-// mouse rests, its final position is also sent reliably in case the last move
-// was lost.
+// sequence number and the number of the last click/release before it (the
+// host drops moves that overtook a click still being retransmitted); clicks,
+// keys and wheel use the reliable channel. When the mouse rests, its final
+// position is also sent reliably in case the last move was lost.
 let pointerSeq = 0;
+let lastButtonSeq = 0;
 let lastMove = null;
 
 function sendReliable(events) {
@@ -451,11 +455,16 @@ function sendReliable(events) {
 
 function sendMove(x, y) {
   if (lastMove && lastMove[0] === x && lastMove[1] === y) return;
-  const seq = ++pointerSeq;
-  lastMove = [x, y, seq];
-  rtc?.sendPointer([['m', x, y, seq]]);
+  lastMove = [x, y, ++pointerSeq];
+  rtc?.sendPointer([['m', x, y, pointerSeq, lastButtonSeq]]);
   clearTimeout(timers.settle);
-  timers.settle = setTimeout(() => sendReliable([['m', x, y, seq]]), 120);
+  timers.settle = setTimeout(() => {
+    if (!lastMove || lastMove[0] !== x || lastMove[1] !== y) return;
+    // New number: the reliable copy queues behind any late click and must not
+    // be dropped as a duplicate of the lost move.
+    lastMove = [x, y, ++pointerSeq];
+    sendReliable([['m', x, y, pointerSeq]]);
+  }, 120);
 }
 
 const round4 = (v) => Math.round(v * 10000) / 10000;
@@ -508,6 +517,7 @@ function attachInput() {
     if (!p) return;
     pressedButtons.add(e.button);
     lastMove = [p[0], p[1], ++pointerSeq];
+    lastButtonSeq = pointerSeq;
     sendReliable([['d', e.button, p[0], p[1], pointerSeq]]);
   });
   window.addEventListener('mouseup', (e) => {
@@ -515,7 +525,10 @@ function attachInput() {
     e.preventDefault();
     pressedButtons.delete(e.button);
     const p = mapPoint(e, true);
-    if (p) lastMove = [p[0], p[1], ++pointerSeq];
+    if (p) {
+      lastMove = [p[0], p[1], ++pointerSeq];
+      lastButtonSeq = pointerSeq;
+    }
     sendReliable([p ? ['u', e.button, p[0], p[1], pointerSeq] : ['u', e.button]]);
   });
   window.addEventListener('mousemove', (e) => {
@@ -532,12 +545,14 @@ function attachInput() {
     const dx = Math.round(e.deltaX * unit);
     const dy = Math.round(e.deltaY * unit);
     if (!dx && !dy) return;
-    // Scroll where the pointer is, even if its last move was lost.
+    // Scroll where the pointer is, even if its last move was lost: the
+    // position goes first on the same reliable channel.
     const p = mapPoint(e);
     const events = [];
-    if (p && (!lastMove || lastMove[0] !== p[0] || lastMove[1] !== p[1])) {
+    if (p) {
       lastMove = [p[0], p[1], ++pointerSeq];
       events.push(['m', p[0], p[1], pointerSeq]);
+      clearTimeout(timers.settle);
     }
     events.push(['w', dx, dy]);
     sendReliable(events);
