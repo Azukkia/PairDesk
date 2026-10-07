@@ -51,6 +51,8 @@ function buildUI() {
   ui.viewOnly = h('span', { class: 'badge warning', title: t('viewer.viewOnlyHelp'), hidden: true }, icon('eye', 'sm'), t('viewer.viewOnly'));
 
   ui.monitorBtn = h('button', { class: 'tool-label', id: 'monitor-button', hidden: true, onclick: (e) => monitorMenu(e.currentTarget) }, icon('monitor', 'sm'), h('span'), icon('chevronDown', 'sm'));
+  // One click to the next screen, without opening the menu.
+  ui.nextScreenBtn = toolButton('swap', t('viewer.nextScreen'), () => nextScreen(), 'next-screen-button');
   ui.scaleBtn = toolButton('fit', t('viewer.original'), () => setScale(st.scale === 'fit' ? 'original' : 'fit'), 'scale-button');
   ui.qualityBtn = toolButton('gauge', t('viewer.quality'), (b) => qualityMenu(b), 'quality-button');
   ui.keysBtn = toolButton('keyboard', t('viewer.actions'), (b) => keysMenu(b), 'keys-button');
@@ -64,7 +66,7 @@ function buildUI() {
 
   ui.topbar = h('header', { class: 'topbar' },
     h('div', { class: 'peer' }, ui.dot, ui.name, ui.id, ui.viewOnly, ui.delay, ui.stats),
-    h('div', { class: 'tools' }, ui.monitorBtn, ui.scaleBtn, ui.qualityBtn, ui.keysBtn, h('span', { class: 'sep' }),
+    h('div', { class: 'tools' }, ui.monitorBtn, ui.nextScreenBtn, ui.scaleBtn, ui.qualityBtn, ui.keysBtn, h('span', { class: 'sep' }),
       ui.clipBtn, ui.fileBtn, ui.chatBtn, ui.soundBtn, h('span', { class: 'sep' }), ui.fsBtn, ui.endBtn, ui.fileInput));
 
   ui.video = h('video', { id: 'remote-screen', autoplay: true, playsInline: true, muted: true });
@@ -112,8 +114,12 @@ function refreshToolbar() {
   clear(ui.fsBtn, icon(st.fullscreen ? 'minimize' : 'maximize'));
   ui.fsBtn.title = st.fullscreen ? t('viewer.exitFullscreen') : t('viewer.fullscreen');
   ui.monitorBtn.hidden = st.displays.length < 2 || !live;
+  ui.nextScreenBtn.hidden = ui.monitorBtn.hidden;
   const idx = st.displays.findIndex((d) => d.id === st.current);
   ui.monitorBtn.children[1].textContent = t('viewer.monitorN', { n: idx >= 0 ? idx + 1 : 1 });
+  const next = st.displays.length ? ((idx >= 0 ? idx : 0) + 1) % st.displays.length : 0;
+  ui.nextScreenBtn.title = t('viewer.nextScreen', { n: next + 1 });
+  ui.nextScreenBtn.setAttribute('aria-label', ui.nextScreenBtn.title);
   ui.chatBtn.querySelector('.count-badge')?.remove();
   if (st.unread) ui.chatBtn.append(h('span', { class: 'count-badge' }, String(st.unread)));
   ui.chatBtn.classList.toggle('active', st.chatOpen);
@@ -364,6 +370,13 @@ function startStats() {
 }
 
 // ───────────────────────────── toolbar actions ─────────────────────────────
+
+function nextScreen() {
+  if (st.displays.length < 2) return;
+  const idx = st.displays.findIndex((d) => d.id === st.current);
+  const next = st.displays[((idx >= 0 ? idx : 0) + 1) % st.displays.length];
+  rtc?.sendControl({ type: 'select-display', displayId: next.id });
+}
 
 function monitorMenu(anchor) {
   showMenu(anchor, [{ title: t('viewer.monitor') }, ...st.displays.map((d, i) => ({

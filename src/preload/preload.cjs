@@ -16,7 +16,7 @@ const INVOKE = new Set([
 ]);
 
 const SEND = new Set([
-  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'input:events', 'host:resize',
+  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'input:events', 'host:resize', 'host:collapse',
   'clipboard:remote', 'files:chunk', 'files:abort',
 ]);
 

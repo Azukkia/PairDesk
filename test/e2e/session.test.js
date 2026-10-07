@@ -355,6 +355,28 @@ async function scenario(host, ctrl) {
     await sleep(300);
   }
 
+  // 5d. The host panel collapses into a small tab on the right edge, and comes back.
+  {
+    const bounds = () => host.app.evaluate(({ BrowserWindow, screen }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/host/'));
+      return { b: win.getBounds(), area: screen.getDisplayMatching(win.getBounds()).workArea };
+    });
+    const open = await bounds();
+    await panel.click('#host-collapse');
+    const tab = await poll(async () => {
+      const r = await bounds();
+      return r.b.width < 60 ? r : null;
+    }, { message: 'host panel collapsed into a tab' });
+    assert.equal(tab.b.x + tab.b.width, tab.area.x + tab.area.width, 'tab on the right edge');
+    await shot(panel, 'host-panel-collapsed');
+    await panel.click('#host-expand');
+    const back = await poll(async () => {
+      const r = await bounds();
+      return r.b.width === open.b.width ? r : null;
+    }, { message: 'host panel expanded again' });
+    assert.deepEqual(back.b, open.b);
+  }
+
   // 6. Chat from the controller to the host panel.
   await viewer.click('#chat-button');
   await viewer.fill('.chat-panel input', 'Bonjour depuis PairDesk !');

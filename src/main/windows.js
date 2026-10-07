@@ -5,6 +5,10 @@ import path from 'node:path';
 import { app, BrowserWindow, nativeTheme, screen } from 'electron';
 
 const HOST_WIDTH = 380;
+// Collapsed host panel: a small tab on the right edge of the screen.
+const TAB_WIDTH = 30;
+const TAB_HEIGHT = 76;
+const expandedBounds = new WeakMap();
 
 export class Windows {
   constructor({ appPath, log, shouldHideOnClose, onMainHidden }) {
@@ -157,8 +161,22 @@ export class Windows {
     win.setBounds({ x: area.x + area.width - HOST_WIDTH - 16, y: area.y + area.height - h - 16, width: HOST_WIDTH, height: h });
   }
 
-  resizeHost(win, height) {
+  collapseHost(win, collapsed) {
     if (!win || win.isDestroyed()) return;
+    if (collapsed) {
+      if (!expandedBounds.has(win)) expandedBounds.set(win, win.getBounds());
+      const area = screen.getDisplayMatching(win.getBounds()).workArea;
+      win.setBounds({ x: area.x + area.width - TAB_WIDTH, y: area.y + area.height - TAB_HEIGHT - 24, width: TAB_WIDTH, height: TAB_HEIGHT });
+      return;
+    }
+    const previous = expandedBounds.get(win);
+    expandedBounds.delete(win);
+    if (previous) win.setBounds(previous);
+    else this.placeHost(win, 200);
+  }
+
+  resizeHost(win, height) {
+    if (!win || win.isDestroyed() || expandedBounds.has(win)) return;
     const b = win.getBounds();
     const area = screen.getDisplayMatching(b).workArea;
     const h = Math.max(120, Math.min(Math.round(height), area.height - 40));

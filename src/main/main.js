@@ -382,6 +382,7 @@ async function main() {
   on('input:events', ['host'], (ctx, events) => sessions.injectInput(ctx, events));
   handle('host:end', ['host'], (ctx) => sessions.endSession(ctx.sid, 'host-ended'));
   on('host:resize', ['host'], (ctx, height) => windows.resizeHost(ctx.win, Number(height) || 200));
+  on('host:collapse', ['host'], (ctx, collapsed) => windows.collapseHost(ctx.win, Boolean(collapsed)));
   on('clipboard:remote', SESSION, (ctx, text) => sessions.remoteClipboard(ctx, String(text)));
 
   // File transfers (received files go to Downloads/PairDesk)

@@ -34,8 +34,9 @@ const peerLabel = () => init.peer.name || formatId(init.peer.id);
 // ───────────────────────────── layout ─────────────────────────────
 
 function resize() {
+  if (collapsed) return;
   const base = app.querySelector('.host-head').offsetHeight + ui.body.offsetHeight + ui.transfers.offsetHeight + 2;
-  const height = collapsed ? 44 : chatOpen ? Math.max(430, base + 240) : base;
+  const height = chatOpen ? Math.max(430, base + 240) : base;
   api.send('host:resize', height);
 }
 
@@ -43,7 +44,11 @@ function build() {
   ui.title = h('span', { class: 'title' });
   ui.timer = h('span', { class: 'timer' });
   ui.live = h('span', { class: 'live', hidden: true });
-  ui.collapse = h('button', { class: 'icon-btn', title: '', onclick: () => { collapsed = !collapsed; document.body.classList.toggle('collapsed', collapsed); clear(ui.collapse, icon(collapsed ? 'maximize' : 'minimize', 'sm')); resize(); } }, icon('minimize', 'sm'));
+  // Collapses the panel into a small tab on the right edge of the screen
+  // (out of the way of the person controlling), with an arrow to bring it back.
+  ui.collapse = h('button', { class: 'icon-btn', id: 'host-collapse', hidden: true, onclick: () => setCollapsed(true) }, icon('chevronRight', 'sm'));
+  ui.tab = h('button', { class: 'side-tab', id: 'host-expand', onclick: () => setCollapsed(false) },
+    icon('chevronLeft', 'sm'), h('span', { class: 'live' }));
   ui.body = h('div', { class: 'host-body' });
   chat = new ChatView({ onSend: (text) => rtc?.sendControl({ type: 'chat', text }) });
   ui.chat = h('div', { class: 'host-chat', hidden: true }, chat.list, chat.form);
@@ -52,8 +57,26 @@ function build() {
   clear(app,
     h('header', { class: 'host-head' }, h('img', { src: '../assets/logo.svg', alt: '' }), ui.live, ui.title, ui.timer, ui.collapse),
     ui.body, ui.transfers, ui.chat, ui.fileInput);
+  document.body.append(ui.tab);
   transfers = new TransferList({ container: ui.transfers, onChange: () => requestAnimationFrame(resize) });
 }
+
+function setCollapsed(on) {
+  if (on === collapsed) return;
+  collapsed = on;
+  document.body.classList.toggle('collapsed', on);
+  api.send('host:collapse', on);
+  // When expanding, the height is measured once the window is wide again
+  // (see the resize listener below).
+}
+
+// The content height depends on the width: re-measure when it changes.
+let lastWidth = window.innerWidth;
+window.addEventListener('resize', () => {
+  if (window.innerWidth === lastWidth) return;
+  lastWidth = window.innerWidth;
+  if (!collapsed) requestAnimationFrame(resize);
+});
 
 function whoBlock(sub) {
   return h('div', { class: 'who' },
@@ -91,6 +114,7 @@ async function accept() {
 function showActive(status) {
   ui.title.textContent = t('host.activeTitle');
   ui.live.hidden = false;
+  ui.collapse.hidden = false;
   ui.status = h('div', { class: 'host-status', id: 'host-status' }, status);
   clear(ui.body,
     whoBlock(t(perms.control ? 'host.controlledBy' : 'host.viewedBy', { name: peerLabel() })),
@@ -391,6 +415,7 @@ function onControl(msg) {
       switchDisplay(String(msg.displayId));
       break;
     case 'chat':
+      setCollapsed(false);
       chat.add(String(msg.text || '').slice(0, 2000), false, peerLabel());
       if (!chatOpen) toggleChat(true);
       break;
@@ -442,6 +467,7 @@ init = await api.invoke('session:init');
 setLanguage(init.lang);
 perms = init.perms || {};
 build();
-ui.collapse.title = t('common.hide');
+ui.collapse.title = t('host.collapse');
+ui.tab.title = t('host.expand', { name: peerLabel() });
 if (init.state === 'pending') showPending();
 else startHosting();
