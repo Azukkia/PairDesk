@@ -153,12 +153,13 @@ async function applyQuality(mode) {
     scaler.reset(performance.now());
     const fps = QUALITY_PRESETS[quality].maxFramerate;
     if (fps !== captureFps) {
-      const oldFps = captureFps;
+      const choice = ++fpsChoice;
       captureFps = fps;
       try {
         await recapture(); // the capture rate is fixed when the track starts
       } catch (err) {
-        if (captureFps === fps) captureFps = oldFps;
+        // Back to the rate of the live track, unless a newer choice set one.
+        if (choice === fpsChoice) captureFps = shownFps;
         console.warn('recapture failed', err?.message || err);
       }
       if (quality !== wanted) return; // a newer choice already wrote its parameters
@@ -233,16 +234,20 @@ function sendInfo() {
 let captureChain = Promise.resolve();
 let captureTarget = null; // display the latest switch is heading to
 let shown = null; // display whose picture the video sender carries
+let shownFps = null; // and its capture rate
+let fpsChoice = 0; // bumped by each quality change that recaptures
 
 function recapture() {
   const run = captureChain.then(async () => {
     const display = captureTarget || current;
-    const stream = await capture(display, false);
+    const fps = captureFps; // rate wanted when this capture starts
+    const stream = await capture(display, false, fps);
     const track = stream.getVideoTracks()[0];
     track.contentHint = QUALITY_PRESETS[quality].contentHint;
     const old = videoSender.track;
     await videoSender.replaceTrack(track);
     shown = display;
+    shownFps = fps;
     old?.stop();
   });
   captureChain = run.catch(() => {});
@@ -323,6 +328,7 @@ async function startHosting() {
     else audioTrack = track;
   }
   shown = current;
+  shownFps = captureFps;
   videoTransceiver = rtc.pc.getTransceivers().find((tr) => tr.sender === videoSender) || null;
   applyCodecs();
   scaler.reset(performance.now());
