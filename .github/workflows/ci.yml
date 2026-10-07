@@ -76,6 +76,20 @@ jobs:
         env:
           PAIRDESK_PACKAGED_EXE: dist/win-unpacked/PairDesk.exe
           PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}\e2e-packaged
+      - name: Install with the setup program, test the installed copy, uninstall
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\PairDesk-Setup-*.exe | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\PairDesk'
+          $exe = Join-Path $dir 'PairDesk.exe'
+          if (-not (Test-Path $exe)) { throw "PairDesk.exe was not installed in $dir" }
+          Get-ChildItem $dir | Format-Table Name, Length
+          $env:PAIRDESK_PACKAGED_EXE = $exe
+          $env:PAIRDESK_E2E_ARTIFACTS = Join-Path $env:RUNNER_TEMP 'e2e-installed'
+          npm run test:e2e
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Start-Process -FilePath (Join-Path $dir 'Uninstall PairDesk.exe') -ArgumentList '/S' -Wait
       - uses: actions/upload-artifact@v4
         with:
           name: PairDesk-Setup-windows

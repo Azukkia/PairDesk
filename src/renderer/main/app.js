@@ -174,7 +174,10 @@ function HomePage() {
     h('button', { class: 'btn primary big connect-btn', type: 'submit', id: 'connect-button' }, t('home.connect'), icon('arrowRight'))),
     recentBox);
 
-  const el = h('div', { class: 'home-grid' }, incoming, outgoing);
+  const how = h('section', { class: 'card how', hidden: true },
+    h('h3', null, t('home.howTitle')),
+    h('div', { class: 'how-steps' }, [1, 2, 3].map((n) => h('div', { class: 'how-step' }, h('span', { class: 'num' }, String(n)), h('span', null, t(`home.step${n}`))))));
+  const el = h('div', { class: 'stack', style: { gap: '18px' } }, h('div', { class: 'home-grid' }, incoming, outgoing), how);
   setTimeout(() => idInput.focus(), 50);
 
   return {
@@ -199,6 +202,7 @@ function HomePage() {
       inputNote.hidden = state.input.available;
       if (!state.input.available) inputNote.querySelector('.text').textContent = t('home.inputUnavailable', { reason: state.input.reason || '' });
 
+      how.hidden = state.recents.length > 0;
       const recents = state.recents.slice(0, 4);
       clear(recentBox, recents.length ? [h('h3', null, t('home.recents')), recents.map(recentChip)] : null);
     },

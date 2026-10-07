@@ -47,6 +47,10 @@ const fr = {
   'home.activeViewing': '{name} voit actuellement votre écran.',
   'home.pendingIncoming': '{name} demande à se connecter à cet ordinateur.',
   'home.endSession': 'Terminer la session',
+  'home.howTitle': 'Comment ça marche ?',
+  'home.step1': 'Installez PairDesk sur les deux ordinateurs.',
+  'home.step2': 'Votre partenaire vous communique son ID et son mot de passe.',
+  'home.step3': 'Saisissez son ID et cliquez sur « Se connecter » : vous voyez et contrôlez son écran.',
   'home.inputUnavailable': 'Le contrôle de cet ordinateur (souris/clavier) est indisponible : {reason}',
 
   'status.online': 'Prêt à se connecter (connexion sécurisée)',
@@ -312,6 +316,10 @@ const en = {
   'home.activeViewing': '{name} is viewing your screen.',
   'home.pendingIncoming': '{name} wants to connect to this computer.',
   'home.endSession': 'End session',
+  'home.howTitle': 'How does it work?',
+  'home.step1': 'Install PairDesk on both computers.',
+  'home.step2': 'Your partner gives you their ID and password.',
+  'home.step3': 'Enter their ID and click “Connect”: you see and control their screen.',
   'home.inputUnavailable': 'Remote mouse/keyboard control of this computer is unavailable: {reason}',
 
   'status.online': 'Ready to connect (secure connection)',
