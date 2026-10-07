@@ -1,0 +1,115 @@
+# Publishes a GitHub release when the version in package.json changes on
+# main. Installed copies of PairDesk detect the new release and offer to
+# update themselves.
+#
+# To ship an update: bump "version" in package.json (e.g. 1.0.1), then merge
+# into main (or run this workflow manually from the Actions tab).
+#
+# Release files never expire. Fixed-name copies give permanent links to the
+# latest version, e.g.
+#   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      create: ${{ steps.version.outputs.create }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if draft=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null); then
+            if [ "$draft" = "true" ]; then
+              echo "Draft release v$version found (previous run did not finish): completing it."
+              echo "create=true" >> "$GITHUB_OUTPUT"
+              echo "draft_exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release v$version already published: nothing to do."
+              echo "create=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "create=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create the draft release
+        if: steps.version.outputs.create == 'true' && steps.version.outputs.draft_exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+            --title "PairDesk ${{ steps.version.outputs.version }}" --generate-notes
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    if: needs.prepare.outputs.create == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            args: --win --x64
+          - name: Linux
+            os: ubuntu-latest
+            args: --linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build and upload to the draft release
+        run: npx electron-builder ${{ matrix.args }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Upload into the draft created above; it is published at the end.
+          EP_DRAFT: "true"
+      - name: Add fixed-name copies (permanent "latest version" download links)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "dist/PairDesk-Setup-$VERSION.exe" dist/PairDesk-Setup.exe
+            gh release upload "v$VERSION" dist/PairDesk-Setup.exe --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            cp "dist/PairDesk-$VERSION-x86_64.AppImage" dist/PairDesk-x86_64.AppImage
+            cp "dist/PairDesk-$VERSION-amd64.deb" dist/PairDesk-amd64.deb
+            gh release upload "v$VERSION" dist/PairDesk-x86_64.AppImage dist/PairDesk-amd64.deb --clobber --repo "$GITHUB_REPOSITORY"
+          fi
+
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release (makes it visible to the auto-updater)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "v${{ needs.prepare.outputs.version }}" --repo "$GITHUB_REPOSITORY" --draft=false --latest

@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Tests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Install X11 test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb libxtst6
+      - name: End-to-end test (two app instances under Xvfb, PairDesk server)
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" npm run test:e2e
+        env:
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e
+      - name: End-to-end test (default mode, MQTT relays)
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" npm run test:e2e
+        env:
+          PAIRDESK_E2E_TRANSPORT: mqtt
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-mqtt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-linux
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows:
+    name: Tests + installer (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: End-to-end test (real Windows desktop, SendInput)
+        run: npm run test:e2e
+        env:
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}\e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-windows
+          path: ${{ runner.temp }}\e2e
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Build the Windows installer
+        run: npx electron-builder --win --x64 --publish never
+      - name: End-to-end test of the packaged application
+        run: npm run test:e2e
+        env:
+          PAIRDESK_PACKAGED_EXE: dist/win-unpacked/PairDesk.exe
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}\e2e-packaged
+      - name: Install with the setup program, test the installed copy, uninstall
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\PairDesk-Setup-*.exe | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\PairDesk'
+          $exe = Join-Path $dir 'PairDesk.exe'
+          if (-not (Test-Path $exe)) { throw "PairDesk.exe was not installed in $dir" }
+          Get-ChildItem $dir | Format-Table Name, Length
+          $env:PAIRDESK_PACKAGED_EXE = $exe
+          $env:PAIRDESK_E2E_ARTIFACTS = Join-Path $env:RUNNER_TEMP 'e2e-installed'
+          npm run test:e2e
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Start-Process -FilePath (Join-Path $dir 'Uninstall PairDesk.exe') -ArgumentList '/S' -Wait
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PairDesk-Setup-windows
+          path: |
+            dist/PairDesk-Setup-*.exe
+            dist/latest.yml
+          retention-days: 90
+
+  server-image:
+    name: Server Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t pairdesk-server server
+      - name: Run it and check the health endpoint
+        run: |
+          docker run -d --name pd -p 8080:8080 pairdesk-server
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/health && exit 0; sleep 1; done
+          docker logs pd
+          exit 1

@@ -1,0 +1,50 @@
+# PairDesk server + coturn relay.
+#   1. Replace pairdesk.example.com by your domain (DNS pointing to this machine)
+#      and set a long random TURN_SECRET (same value in both services).
+#   2. docker compose up -d
+#   3. In PairDesk: Settings → Network → "Private server" = wss://pairdesk.example.com/ws
+services:
+  pairdesk:
+    build: .
+    restart: unless-stopped
+    environment:
+      TURN_URLS: turn:pairdesk.example.com:3478?transport=udp,turn:pairdesk.example.com:3478?transport=tcp
+      TURN_SECRET: change-me-to-a-long-random-string
+      TRUST_PROXY: "1"
+    volumes:
+      - pairdesk-data:/data
+
+  # TLS termination (automatic Let's Encrypt certificates).
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command: caddy reverse-proxy --from pairdesk.example.com --to pairdesk:8080
+    volumes:
+      - caddy-data:/data
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=change-me-to-a-long-random-string
+      - --realm=pairdesk.example.com
+      - --min-port=49160
+      - --max-port=49200
+      - --no-cli
+      - --no-multicast-peers
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+
+volumes:
+  pairdesk-data:
+  caddy-data:
