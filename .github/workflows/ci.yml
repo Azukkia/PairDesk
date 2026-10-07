@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Tests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Install X11 test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb libxtst6
+      - name: End-to-end test (two app instances under Xvfb)
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" npm run test:e2e
+        env:
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-linux
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows:
+    name: Tests + installer (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: End-to-end test (real Windows desktop, SendInput)
+        run: npm run test:e2e
+        env:
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}\e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-windows
+          path: ${{ runner.temp }}\e2e
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Build the Windows installer
+        run: npx electron-builder --win --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PairDesk-Setup-windows
+          path: |
+            dist/PairDesk-Setup-*.exe
+            dist/latest.yml
+          retention-days: 30

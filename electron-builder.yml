@@ -1,0 +1,89 @@
+# Packaging configuration (https://www.electron.build).
+#   npm run dist:win    → dist/PairDesk-Setup-<version>.exe (NSIS installer)
+#   npm run dist:linux  → AppImage + .deb
+appId: com.azukkia.pairdesk
+productName: PairDesk
+copyright: Copyright © 2026 Azukkia
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**/*
+  - assets/**/*
+  - pairdesk.config.json
+  - package.json
+  - "!**/*.map"
+  - "!**/node_modules/**/{README,readme,CHANGELOG,changelog,HISTORY}*"
+  - "!**/node_modules/**/{test,tests,__tests__,example,examples,docs,doc,benchmarks}/**"
+
+# koffi ships prebuilt Node-API binaries: nothing to compile.
+npmRebuild: false
+asarUnpack:
+  - node_modules/koffi/**
+  - node_modules/@koromix/**
+
+# Only keep the UI languages PairDesk uses.
+electronLanguages:
+  - en-US
+  - fr
+
+protocols:
+  - name: PairDesk
+    schemes:
+      - pairdesk
+
+# Auto-update feed: installed copies check the GitHub releases of this repo.
+publish:
+  - provider: github
+    owner: Azukkia
+    repo: PairDesk
+    releaseType: release
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: PairDesk-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: PairDesk
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  multiLanguageInstaller: true
+  installerLanguages:
+    - fr_FR
+    - en_US
+  language: "1036"
+  displayLanguageSelector: false
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Network
+  icon: build/icon.png
+  synopsis: Remote control and screen sharing, peer-to-peer
+  description: PairDesk lets you view and control a remote computer with an ID and a password.
+  maintainer: Azukkia <azukkia.marechal@gmail.com>
+  artifactName: PairDesk-${version}-${arch}.${ext}
+
+deb:
+  depends:
+    - libxtst6
+    - libx11-6
+    - libnotify4
+    - libnss3
+    - libasound2 | libasound2t64
