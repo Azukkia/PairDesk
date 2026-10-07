@@ -2,7 +2,17 @@
 
 **PairDesk** est un logiciel de contrôle à distance pair-à-pair, gratuit et sans limitation d'usage — une alternative à TeamViewer. Chaque ordinateur reçoit un **ID à 9 chiffres** et un **mot de passe** : votre partenaire vous les communique, vous vous connectez, vous voyez et contrôlez son écran.
 
-![Icône PairDesk](assets/icon.png)
+<p align="center"><img src="assets/icon.png" width="96" alt="Icône PairDesk"></p>
+
+## ⬇️ Télécharger
+
+| Système | Lien (toujours la dernière version) |
+|---|---|
+| **Windows 10/11** | **[Télécharger PairDesk-Setup.exe](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe)** |
+| Linux (AppImage) | [PairDesk-x86_64.AppImage](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-x86_64.AppImage) |
+| Linux (Debian/Ubuntu) | [PairDesk-amd64.deb](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-amd64.deb) |
+
+Ces liens sont permanents : ils pointent toujours vers la dernière version publiée. Toutes les versions restent disponibles sur la page [Releases](https://github.com/Azukkia/PairDesk/releases).
 
 ## Fonctionnalités
 
@@ -19,7 +29,7 @@
 
 ## Installation (Windows 10/11)
 
-1. Téléchargez **`PairDesk-Setup-x.y.z.exe`** depuis la page [Releases](https://github.com/Azukkia/PairDesk/releases).
+1. Téléchargez **[PairDesk-Setup.exe](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe)** (ou une version précise depuis la page [Releases](https://github.com/Azukkia/PairDesk/releases)).
 2. Lancez-le. Comme l'installeur n'est pas signé numériquement (un certificat de signature est payant), Windows SmartScreen peut afficher « Windows a protégé votre ordinateur » : cliquez sur **Informations complémentaires** puis **Exécuter quand même**.
 3. Choisissez l'installation pour vous seul (recommandé, sans droits administrateur) ou pour tous les utilisateurs, puis terminez. Un raccourci est créé sur le Bureau et dans le menu Démarrer.
 
@@ -45,7 +55,7 @@ Une fois installé, PairDesk interroge les [Releases GitHub](https://github.com/
 2. Fusionnez dans la branche `main`.
 3. Le workflow GitHub Actions **Release** construit l'installeur Windows (et les paquets Linux), crée la release `v1.0.1` et la publie. Tous les PairDesk installés proposeront la mise à jour à leur prochaine vérification.
 
-Le workflow peut aussi être lancé à la main (onglet *Actions → Release → Run workflow*). Chaque build de la CI fournit également l'installeur en artefact téléchargeable (onglet *Actions*).
+Le workflow peut aussi être lancé à la main (onglet *Actions → Release → Run workflow*). Les fichiers d'une release ne sont jamais supprimés, et le lien [`releases/latest/download/PairDesk-Setup.exe`](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe) suit automatiquement la nouvelle version. (Chaque build de la CI fournit aussi l'installeur en artefact de test, conservé 90 jours.)
 
 ## Réseau et fiabilité
 

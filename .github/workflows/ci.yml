@@ -96,7 +96,7 @@ jobs:
           path: |
             dist/PairDesk-Setup-*.exe
             dist/latest.yml
-          retention-days: 30
+          retention-days: 90
 
   server-image:
     name: Server Docker image
