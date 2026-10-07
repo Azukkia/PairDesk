@@ -148,14 +148,23 @@ async function applyQuality(mode) {
   const previous = quality;
   quality = QUALITY_PRESETS[mode] ? mode : 'balanced';
   if (!videoSender?.track) return;
-  const preset = QUALITY_PRESETS[quality];
+  const wanted = quality;
   if (quality !== previous) {
     scaler.reset(performance.now());
-    if (preset.maxFramerate !== captureFps) {
-      captureFps = preset.maxFramerate;
-      await recapture(); // the capture rate is fixed when the track starts
+    const fps = QUALITY_PRESETS[quality].maxFramerate;
+    if (fps !== captureFps) {
+      const oldFps = captureFps;
+      captureFps = fps;
+      try {
+        await recapture(); // the capture rate is fixed when the track starts
+      } catch (err) {
+        if (captureFps === fps) captureFps = oldFps;
+        console.warn('recapture failed', err?.message || err);
+      }
+      if (quality !== wanted) return; // a newer choice already wrote its parameters
     }
   }
+  const preset = QUALITY_PRESETS[quality];
   videoSender.track.contentHint = preset.contentHint;
   const params = videoSender.getParameters();
   if (!params.encodings || !params.encodings.length) params.encodings = [{}];
@@ -223,14 +232,17 @@ function sendInfo() {
 // display (the viewer would see one screen while controlling the other).
 let captureChain = Promise.resolve();
 let captureTarget = null; // display the latest switch is heading to
+let shown = null; // display whose picture the video sender carries
 
 function recapture() {
   const run = captureChain.then(async () => {
-    const stream = await capture(captureTarget || current, false);
+    const display = captureTarget || current;
+    const stream = await capture(display, false);
     const track = stream.getVideoTracks()[0];
     track.contentHint = QUALITY_PRESETS[quality].contentHint;
     const old = videoSender.track;
     await videoSender.replaceTrack(track);
+    shown = display;
     old?.stop();
   });
   captureChain = run.catch(() => {});
@@ -243,16 +255,18 @@ async function switchDisplay(displayId) {
   captureTarget = target;
   try {
     await recapture();
-    if (captureTarget !== target) return; // a newer switch finishes the job
-    current = target;
-    captureTarget = null;
-    api.send('host:set-display', current.displayId);
-    await applyQuality(quality);
-    rtc.sendControl({ type: 'display-changed', current: current.displayId });
   } catch (err) {
-    if (captureTarget === target) captureTarget = null;
     console.error('display switch failed', err);
   }
+  if (captureTarget !== target) return; // a newer switch finishes the job
+  captureTarget = null;
+  // Input follows whatever is on screen: the target, or what an earlier
+  // switch left there if this capture failed.
+  if (!shown || shown === current) return;
+  current = shown;
+  api.send('host:set-display', current.displayId);
+  await applyQuality(quality);
+  rtc.sendControl({ type: 'display-changed', current: current.displayId });
 }
 
 let hostingStarted = false;
@@ -308,6 +322,7 @@ async function startHosting() {
     if (track.kind === 'video') videoSender = sender;
     else audioTrack = track;
   }
+  shown = current;
   videoTransceiver = rtc.pc.getTransceivers().find((tr) => tr.sender === videoSender) || null;
   applyCodecs();
   scaler.reset(performance.now());

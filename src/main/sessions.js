@@ -323,7 +323,12 @@ export class SessionManager extends EventEmitter {
   injectInput(ctx, events) {
     const host = this.host;
     if (ctx !== host || host.state !== 'active' || !host.perms.control || !Array.isArray(events)) return;
-    if (!this.settings.get('allowControl')) return;
+    if (!this.settings.get('allowControl')) {
+      // Not injected, but numbered clicks must still count, else moves would
+      // wait for them once control is allowed again.
+      for (const ev of events.slice(0, 200)) if (Array.isArray(ev)) host.pointer.accept(ev);
+      return;
+    }
     const inj = this.injector;
     const rect = this.#displayRect(host.displayId);
     const move = (nx, ny) => inj.moveTo(rect.x + clamp01(nx) * (rect.width - 1), rect.y + clamp01(ny) * (rect.height - 1));

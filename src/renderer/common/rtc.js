@@ -244,13 +244,9 @@ export class RtcSession extends EventTarget {
       view.update({ status: reply.type === 'file-reject' ? 'rejected' : 'failed' });
       return false;
     }
-    // Listen from the start (a receiver failing mid-way answers early), but
-    // only time out once everything is sent: slow links are not failures.
+    // The completion timeout only starts once everything is sent: a slow
+    // link is not a failure.
     const done = this.#waitFor(fid, ['file-done']);
-    let early = null;
-    done.then((msg) => {
-      early = msg;
-    });
     if (file.size > 0) {
       const dc = this.pc.createDataChannel(`file:${fid}`, { ordered: true });
       dc.binaryType = 'arraybuffer';
@@ -269,7 +265,7 @@ export class RtcSession extends EventTarget {
       this.#startPings();
       try {
         while (offset < file.size) {
-          if (dc.readyState !== 'open' || early) throw new Error('transfer stopped');
+          if (dc.readyState !== 'open') throw new Error('channel closed');
           if (dc.bufferedAmount > HIGH_WATER) {
             await new Promise((resolve) => {
               const timer = setTimeout(resolve, 1000); // in case the event is missed

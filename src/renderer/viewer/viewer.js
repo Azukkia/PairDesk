@@ -547,15 +547,16 @@ function attachInput() {
     if (!dx && !dy) return;
     // Scroll where the pointer is, even if its last move was lost: the
     // position goes first on the same reliable channel.
+    // Like a click, the wheel is numbered: moves made after it wait for it.
     const p = mapPoint(e);
-    const events = [];
     if (p) {
       lastMove = [p[0], p[1], ++pointerSeq];
-      events.push(['m', p[0], p[1], pointerSeq]);
+      lastButtonSeq = pointerSeq;
       clearTimeout(timers.settle);
+      sendReliable([['m', p[0], p[1], pointerSeq], ['w', dx, dy, pointerSeq]]);
+    } else {
+      sendReliable([['w', dx, dy]]);
     }
-    events.push(['w', dx, dy]);
-    sendReliable(events);
   }, { passive: false });
   ui.stage.addEventListener('contextmenu', (e) => e.preventDefault());
   // Prevent "back"/"forward" mouse buttons from doing anything locally.

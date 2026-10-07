@@ -204,6 +204,18 @@ test('pointer sequencer: moves that overtook a click still in flight are dropped
   assert.ok(s.accept(['m', 0.9, 0.9, 9, 0]));
 });
 
+test('pointer sequencer: the wheel is a barrier too', () => {
+  const s = new PointerSequencer();
+  assert.ok(s.accept(['m', 0.2, 0.5, 1, 0]));
+  // Scroll at (0.8, 0.5) = reliable [m 2, w 2]; the move to 0.45 sent after it arrives first.
+  assert.ok(!s.accept(['m', 0.45, 0.44, 3, 2]), 'waits for the wheel');
+  assert.ok(s.accept(['m', 0.8, 0.5, 2]));
+  assert.ok(s.accept(['w', 0, 120, 2]));
+  assert.ok(s.accept(['m', 0.45, 0.44, 4, 2]));
+  // Wheel from viewers older than 1.1.
+  assert.ok(s.accept(['w', 0, 120]));
+});
+
 test('pointer sequencer: drops stale moves, keeps clicks and old viewers', () => {
   const s = new PointerSequencer();
   assert.ok(s.accept(['m', 0.1, 0.1, 1]));

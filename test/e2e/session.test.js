@@ -293,6 +293,28 @@ async function scenario(host, ctrl) {
   await viewer.keyboard.press('Backspace');
   await poll(async () => (await host.main.inputValue('#partner-id')).replace(/\s/g, '') === '481', { message: 'remote backspace' });
 
+  // 5b. Quick quality changes (the 60 fps preset recaptures the screen): the
+  // picture keeps coming and the mouse still lands where expected.
+  if (hostRoot === root && ctrlRoot === root) {
+    const pick = async (index) => {
+      await viewer.click('#quality-button');
+      await viewer.click(`.menu button:nth-of-type(${index + 1})`);
+    };
+    await pick(0); // speed
+    await pick(1); // balanced, while the 60 fps capture may still be starting
+    await sleep(1500);
+    const frames = () => viewer.evaluate(() => document.querySelector('#remote-screen').getVideoPlaybackQuality().totalVideoFrames);
+    const before = await frames();
+    await poll(async () => (await frames()) > before + 5, { message: 'video still playing after quality changes' });
+    const target2 = { x: Math.round((hostBounds.x + 300) * screenInfo.scale), y: Math.round((hostBounds.y + 400) * screenInfo.scale) };
+    const p2 = await viewerPointFor(viewer, target2, screenInfo);
+    await viewer.mouse.move(p2.x, p2.y, { steps: 4 });
+    await poll(async () => {
+      const c = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor'));
+      return Math.abs(c.x - target2.x) <= tolerance && Math.abs(c.y - target2.y) <= tolerance;
+    }, { message: `host cursor near ${JSON.stringify(target2)} after quality changes` });
+  }
+
   // 6. Chat from the controller to the host panel.
   await viewer.click('#chat-button');
   await viewer.fill('.chat-panel input', 'Bonjour depuis PairDesk !');

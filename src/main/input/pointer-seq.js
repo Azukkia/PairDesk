@@ -3,9 +3,10 @@
 // keys and the final resting position use the reliable channel. Every
 // position-bearing event carries a sequence number: a move older than the
 // last applied position is dropped. A move also carries the number of the
-// last press/release sent before it: while that click is still on its way
-// (lost packet being retransmitted), the move is dropped too, so it can
-// neither drag with a button that should be up nor click at a stale place.
+// last press/release/wheel sent before it: while that event is still on its
+// way (lost packet being retransmitted), the move is dropped too, so it can
+// neither drag with a button that should be up, nor make a click or a scroll
+// land where the pointer went afterwards.
 // Events without numbers (viewers older than 1.1) are applied as they come.
 
 export class PointerSequencer {
@@ -30,8 +31,9 @@ export class PointerSequencer {
         return true;
       }
       case 'd':
-      case 'u': {
-        const seq = ev[4];
+      case 'u':
+      case 'w': {
+        const seq = ev[0] === 'w' ? ev[3] : ev[4];
         if (Number.isSafeInteger(seq)) {
           if (seq > this.last) this.last = seq;
           if (seq > this.button) this.button = seq;
