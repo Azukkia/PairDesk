@@ -16,7 +16,8 @@ import { createTray } from './tray.js';
 import { Updater } from './updater.js';
 import { ClipboardSync } from './clipboard.js';
 import { FileReceiver } from './files.js';
-import { createInjector } from './input/index.js';
+import { InputService } from './input-service.js';
+import { clipboardSequence } from './clipboard-native.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
 import { MIN_PERMANENT_PASSWORD_LENGTH, normalizeId, isValidId } from '../shared/protocol.js';
 
@@ -128,8 +129,9 @@ async function main() {
 
   registerAppProtocol();
 
-  const injector = await createInjector(log);
-  const clipboardSync = new ClipboardSync({ clipboard, getSequence: injector.clipboardSequence?.bind(injector), log });
+  const input = new InputService({ appPath, log });
+  await input.start();
+  const clipboardSync = new ClipboardSync({ clipboard, getSequence: clipboardSequence(log), log });
   const downloadsDir = () => process.env.PAIRDESK_DOWNLOADS_DIR || path.join(app.getPath('downloads'), 'PairDesk');
   const files = new FileReceiver({ getDirectory: downloadsDir, log });
 
@@ -156,7 +158,7 @@ async function main() {
   let sessions;
   const network = new Network({ settings, config, log, canAccept: () => sessions.canAccept() });
   sessions = new SessionManager({
-    network, settings, injector, clipboard: clipboardSync, files, windows, log, appVersion: app.getVersion(), notify,
+    network, settings, input, clipboard: clipboardSync, files, windows, log, appVersion: app.getVersion(), notify,
     // The translator changes with the language setting.
     t: (key, vars) => t(key, vars),
   });
@@ -182,7 +184,7 @@ async function main() {
     recents: settings.publicRecents(),
     update: updater.state,
     sessions: sessions.summary(),
-    input: { available: injector.available, reason: injector.reason || null },
+    input: { available: input.available, reason: input.reason || null },
     lockedFor: network.limiter.lockedFor(),
   });
   let pushTimer = null;
@@ -260,6 +262,7 @@ async function main() {
     }
     if ('useRandomPassword' in changed || 'passwordLength' in changed) network.regeneratePassword();
     if ('autoCheckUpdates' in changed) updater.schedule(settings.get('autoCheckUpdates'));
+    if ('allowControl' in changed) sessions.syncInput();
     pushState();
   });
 
@@ -376,7 +379,6 @@ async function main() {
   handle('host:consent', ['host'], (ctx, accept) => sessions.hostConsent(ctx.sid, Boolean(accept)));
   handle('host:displays', ['host'], () => sessions.listDisplays());
   on('host:set-display', ['host'], (ctx, displayId) => sessions.setHostDisplay(ctx, displayId));
-  on('host:cursor-resync', ['host'], (ctx) => sessions.resyncCursor(ctx));
   on('input:events', ['host'], (ctx, events) => sessions.injectInput(ctx, events));
   handle('host:end', ['host'], (ctx) => sessions.endSession(ctx.sid, 'host-ended'));
   on('host:resize', ['host'], (ctx, height) => windows.resizeHost(ctx.win, Number(height) || 200));
@@ -406,7 +408,7 @@ async function main() {
   });
 
   if (E2E) {
-    handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...injector.cursorPos(), shape: await sessions.cursorShapeDebug() }));
+    handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...(await input.cursorPos()), shape: await input.cursorDebug() }));
   }
 
   // ───────────── start ─────────────
@@ -459,10 +461,14 @@ async function main() {
   app.on('activate', () => windows.showMain());
   app.on('before-quit', () => {
     quitting = true;
-    sessions.endAll();
+    sessions.endAll(); // also tells the input helper to release every key and button
+    input.beginShutdown();
     settings.saveNow();
     // Give the "bye" messages a moment to leave before the transport closes.
-    setTimeout(() => network.stop(), 200);
+    setTimeout(() => {
+      network.stop();
+      input.stop();
+    }, 200);
   });
   app.on('window-all-closed', () => {
     if (!settings.get('closeToTray') || quitting) app.quit();

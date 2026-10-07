@@ -73,7 +73,9 @@ function buildUI() {
   remoteCursor = createRemoteCursor(ui.video);
   ui.stage = h('main', { class: 'stage fit', tabindex: '0', id: 'stage' }, ui.video);
   ui.overlay = h('div', { class: 'overlay' });
-  ui.stage.append(ui.overlay);
+  // Why the remote mouse does nothing (Windows blocks injected input).
+  ui.notice = h('div', { class: 'notice', id: 'input-blocked', hidden: true, role: 'status' });
+  ui.stage.append(ui.overlay, ui.notice);
 
   chat = new ChatView({ onSend: (text) => rtc?.sendControl({ type: 'chat', text }) });
   ui.chat = h('aside', { class: 'chat-panel', hidden: true },
@@ -287,6 +289,11 @@ function onControl(msg) {
     case 'cursor':
       remoteCursor.handle(msg);
       break;
+    case 'input-blocked':
+      ui.notice.hidden = !msg.reason;
+      ui.notice.dataset.kind = msg.reason ? 'blocked' : '';
+      ui.notice.textContent = msg.reason === 'secure-desktop' ? t('viewer.blockedSecure') : msg.reason ? t('viewer.blockedElevated') : '';
+      break;
     case 'host-stats': {
       const num = (v) => (Number.isFinite(v) ? v : null);
       const str = (v) => (typeof v === 'string' ? v.slice(0, 60) : '');
@@ -304,11 +311,30 @@ function onControl(msg) {
   }
 }
 
+// A picture that stops changing usually means a sleeping (or locked) remote
+// screen: ask the host to wake it, and say so if it does not come back.
+let frozenFor = 0;
+function watchFrozen(s) {
+  if (!st.hadVideo || rtc?.pc.connectionState !== 'connected' || s.fps == null) return;
+  frozenFor = s.fps > 0 ? 0 : frozenFor + 1;
+  if (frozenFor === 3) rtc.sendControl({ type: 'wake' });
+  const show = frozenFor >= 6;
+  if (show && ui.notice.hidden) {
+    ui.notice.textContent = t('viewer.frozen');
+    ui.notice.hidden = false;
+    ui.notice.dataset.kind = 'frozen';
+  } else if (!show && ui.notice.dataset.kind === 'frozen') {
+    ui.notice.hidden = true;
+    ui.notice.dataset.kind = '';
+  }
+}
+
 function startStats() {
   clearInterval(timers.stats);
   timers.stats = setInterval(async () => {
     if (!rtc || st.ended) return;
     const s = await rtc.stats();
+    watchFrozen(s);
     // Estimated screen-to-screen delay: half the round trip + what the host
     // reports (encoding, send queue) + what happens here (buffer, decoding)
     // + about one frame to display.

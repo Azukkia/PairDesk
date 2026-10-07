@@ -10,6 +10,8 @@ function unavailable(reason) {
     button() {},
     wheel() {},
     key() {},
+    typeText() {},
+    wake() {},
     releaseAll() {},
     cursorPos() {
       return { x: 0, y: 0 };

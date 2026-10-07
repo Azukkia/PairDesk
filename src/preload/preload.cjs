@@ -16,14 +16,33 @@ const INVOKE = new Set([
 ]);
 
 const SEND = new Set([
-  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'host:cursor-resync', 'input:events', 'host:resize',
+  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'input:events', 'host:resize',
   'clipboard:remote', 'files:chunk', 'files:abort',
 ]);
 
 const RECEIVE = new Set([
   'app:state', 'app:navigate', 'app:deeplink', 'connect:status',
-  'session:signal', 'session:ended', 'session:state', 'clipboard:local', 'host:cursor',
+  'session:signal', 'session:ended', 'session:state', 'clipboard:local',
 ]);
+
+// Host window only: a direct line to the input helper process (remote mouse
+// and keyboard). It does not go through the main process, whose thread can be
+// stuck in a Windows modal loop (window being dragged, tray menu...).
+let inputPort = null;
+const inputListeners = new Set();
+ipcRenderer.on('input:port', (event) => {
+  try {
+    inputPort?.close();
+  } catch {
+    /* ignore */
+  }
+  inputPort = event.ports[0] || null;
+  if (!inputPort) return;
+  inputPort.onmessage = (e) => {
+    for (const cb of inputListeners) cb(e.data);
+  };
+  inputPort.start();
+});
 
 contextBridge.exposeInMainWorld('pairdesk', {
   platform: process.platform,
@@ -39,6 +58,18 @@ contextBridge.exposeInMainWorld('pairdesk', {
     const listener = (_event, ...args) => callback(...args);
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);
+  },
+  inputPort: {
+    /** Returns false when the port is not there yet (use 'input:events'). */
+    send(msg) {
+      if (!inputPort) return false;
+      inputPort.postMessage(msg);
+      return true;
+    },
+    on(callback) {
+      inputListeners.add(callback);
+      return () => inputListeners.delete(callback);
+    },
   },
   pathForFile(file) {
     try {

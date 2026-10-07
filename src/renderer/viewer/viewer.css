@@ -45,6 +45,11 @@ body.viewer { background: #05070d; overflow: hidden; }
 .chat-panel header { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--border); font-weight: 600; }
 
 body.viewer .transfers { bottom: 16px; left: 16px; }
+.stage .notice {
+  position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 12; max-width: min(640px, calc(100% - 32px));
+  padding: 10px 14px; border-radius: var(--radius); background: var(--warning); color: #fff; font-size: 13px; line-height: 1.4;
+  box-shadow: var(--shadow-lg); pointer-events: none;
+}
 .drop-hint { position: fixed; inset: 60px 16px 16px; border: 2px dashed var(--accent); border-radius: var(--radius-lg); background: rgba(47, 98, 245, 0.18); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; font-weight: 600; z-index: 30; pointer-events: none; }
 
 /* Full screen: the toolbar floats and hides itself. */

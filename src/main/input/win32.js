@@ -22,7 +22,10 @@ const MOUSEEVENTF_ABSOLUTE = 0x8000;
 
 const KEYEVENTF_EXTENDEDKEY = 0x0001;
 const KEYEVENTF_KEYUP = 0x0002;
+const KEYEVENTF_UNICODE = 0x0004;
 const KEYEVENTF_SCANCODE = 0x0008;
+const VK_TAB = 0x09;
+const VK_RETURN = 0x0d;
 
 const SM_XVIRTUALSCREEN = 76;
 const SM_YVIRTUALSCREEN = 77;
@@ -60,6 +63,7 @@ export function createWin32Injector(log) {
   const GetSystemMetrics = user32.func('int __stdcall GetSystemMetrics(int nIndex)');
   const GetCursorPos = user32.func('int __stdcall GetCursorPos(_Out_ PD_POINT *lpPoint)');
   const GetClipboardSequenceNumber = user32.func('uint32_t __stdcall GetClipboardSequenceNumber()');
+  const SetThreadExecutionState = koffi.load('kernel32.dll').func('uint32_t __stdcall SetThreadExecutionState(uint32_t flags)');
   const INPUT_SIZE = koffi.sizeof(INPUT);
 
   const pressedKeys = new Set();
@@ -130,6 +134,37 @@ export function createWin32Injector(log) {
       send([input]);
       if (down) pressedKeys.add(code);
       else pressedKeys.delete(code);
+    },
+
+    /**
+     * Turns the screen back on (display power saving): the picture of a
+     * sleeping screen stays frozen, which looks like a frozen session.
+     */
+    wake(nudge = true) {
+      SetThreadExecutionState(0x00000002 | 0x00000001); // ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED
+      // A relative one-pixel move there and back wakes monitors that ignore
+      // the call above (only when remote control is allowed: it is input).
+      if (nudge) send([mouse(MOUSEEVENTF_MOVE, { dx: 1, dy: 0 }), mouse(MOUSEEVENTF_MOVE, { dx: -1, dy: 0 })]);
+    },
+
+    /** Types text whatever the keyboard layout (phones' soft keyboards). */
+    typeText(text) {
+      const inputs = [];
+      const vk = (code, up) => ({ type: INPUT_KEYBOARD, u: { ki: { wVk: code, wScan: 0, dwFlags: up ? KEYEVENTF_KEYUP : 0, time: 0, dwExtraInfo: EXTRA_INFO } } });
+      const unit = (u, up) => ({
+        type: INPUT_KEYBOARD,
+        u: { ki: { wVk: 0, wScan: u, dwFlags: KEYEVENTF_UNICODE | (up ? KEYEVENTF_KEYUP : 0), time: 0, dwExtraInfo: EXTRA_INFO } },
+      });
+      for (const ch of String(text).replace(/\r\n?/g, '\n')) {
+        if (ch === '\n' || ch === '\t') {
+          const code = ch === '\n' ? VK_RETURN : VK_TAB;
+          inputs.push(vk(code, false), vk(code, true));
+          continue;
+        }
+        // Characters outside the BMP are sent as their two UTF-16 halves.
+        for (let i = 0; i < ch.length; i++) inputs.push(unit(ch.charCodeAt(i), false), unit(ch.charCodeAt(i), true));
+      }
+      if (inputs.length) send(inputs);
     },
 
     releaseAll() {

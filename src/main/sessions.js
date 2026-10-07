@@ -4,15 +4,10 @@
 
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
-import { screen, desktopCapturer, powerSaveBlocker, nativeImage } from 'electron';
+import { screen, desktopCapturer, powerSaveBlocker } from 'electron';
 import { PROTOCOL_VERSION, isValidId } from '../shared/protocol.js';
 import { derivePrs } from './crypto/prs.js';
 import { SignalingError } from './signaling/signaling.js';
-import { PointerSequencer } from './input/pointer-seq.js';
-import { createCursorTracker } from './cursor.js';
-
-const clamp01 = (v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
-const clampWheel = (v) => (Number.isFinite(v) ? Math.max(-2400, Math.min(2400, v)) : 0);
 
 export function physicalRect(display) {
   if (process.platform === 'win32') return screen.dipToScreenRect(null, display.bounds);
@@ -25,9 +20,9 @@ export function physicalRect(display) {
 }
 
 export class SessionManager extends EventEmitter {
-  constructor({ network, settings, injector, clipboard, files, windows, log, appVersion, notify, t }) {
+  constructor({ network, settings, input, clipboard, files, windows, log, appVersion, notify, t }) {
     super();
-    Object.assign(this, { network, settings, injector, clipboard, files, windows, log, appVersion, notify, t });
+    Object.assign(this, { network, settings, input, clipboard, files, windows, log, appVersion, notify, t });
     this.outgoing = new Map();
     this.host = null;
     this.connecting = null;
@@ -37,7 +32,10 @@ export class SessionManager extends EventEmitter {
     clipboard.on('change', (text) => {
       for (const entry of this.#clipboardTargets()) entry.win.webContents.send('clipboard:local', text);
     });
-    const invalidate = () => this.displayRectCache.clear();
+    const invalidate = () => {
+      this.displayRectCache.clear();
+      this.syncInput();
+    };
     screen.on('display-metrics-changed', invalidate);
     screen.on('display-added', invalidate);
     screen.on('display-removed', invalidate);
@@ -200,7 +198,7 @@ export class SessionManager extends EventEmitter {
 
   #hostPerms() {
     return {
-      control: this.settings.get('allowControl') && this.injector.available,
+      control: this.settings.get('allowControl') && this.input.available,
       files: this.settings.get('allowFileTransfer'),
       clipboard: this.settings.get('allowClipboard'),
       audio: this.settings.get('shareAudio') && process.platform === 'win32',
@@ -221,7 +219,6 @@ export class SessionManager extends EventEmitter {
       peerPlatform: session.peerPlatform,
       peerVersion: session.peerVersion || '',
       credential: session.credential,
-      pointer: new PointerSequencer(),
       state: needConsent ? 'pending' : 'active',
       perms: this.#hostPerms(),
       queue: [],
@@ -267,7 +264,7 @@ export class SessionManager extends EventEmitter {
       host.powerBlocker = null;
     }
     this.#setClipboard(host, host.perms.clipboard);
-    if (host.perms.control) this.#startCursor(host);
+    this.syncInput();
     if (!this.windows.isMainVisible()) {
       this.notify(this.t('notify.incomingTitle'), this.t('notify.incomingBody', { name: host.peerName, id: host.peerId }));
     }
@@ -318,75 +315,37 @@ export class SessionManager extends EventEmitter {
   setHostDisplay(ctx, displayId) {
     if (ctx !== this.host) return;
     ctx.displayId = String(displayId);
+    this.syncInput();
   }
 
-  injectInput(ctx, events) {
+  /**
+   * Sends the incoming session's state to the input helper: whether remote
+   * input may be injected right now and where (the shared display).
+   */
+  syncInput() {
     const host = this.host;
-    if (ctx !== host || host.state !== 'active' || !host.perms.control || !Array.isArray(events)) return;
-    if (!this.settings.get('allowControl')) {
-      // Not injected, but numbered clicks must still count, else moves would
-      // wait for them once control is allowed again.
-      for (const ev of events.slice(0, 200)) if (Array.isArray(ev)) host.pointer.accept(ev);
+    if (!host || host.state !== 'active') {
+      this.input.setSession(null);
       return;
     }
-    const inj = this.injector;
-    const rect = this.#displayRect(host.displayId);
-    const move = (nx, ny) => inj.moveTo(rect.x + clamp01(nx) * (rect.width - 1), rect.y + clamp01(ny) * (rect.height - 1));
-    for (const ev of events.slice(0, 200)) {
-      if (!Array.isArray(ev) || !host.pointer.accept(ev)) continue;
-      switch (ev[0]) {
-        case 'm':
-          move(ev[1], ev[2]);
-          break;
-        case 'd':
-        case 'u':
-          if (ev.length >= 4) move(ev[2], ev[3]);
-          if (Number.isInteger(ev[1])) inj.button(ev[1], ev[0] === 'd');
-          break;
-        case 'w':
-          inj.wheel(clampWheel(ev[1]), clampWheel(ev[2]));
-          break;
-        case 'k':
-          if (typeof ev[1] === 'string' && ev[1].length < 32) inj.key(ev[1], Boolean(ev[2]));
-          break;
-        case 'r':
-          inj.releaseAll();
-          break;
-        default:
-          break;
-      }
+    const displays = screen.getAllDisplays();
+    const display = displays.find((d) => String(d.id) === String(host.displayId)) || screen.getPrimaryDisplay();
+    this.input.setSession({
+      id: host.sid,
+      control: host.perms.control && this.settings.get('allowControl'),
+      rect: this.#displayRect(host.displayId),
+      scale: display.scaleFactor || 1,
+    });
+    if (host.ready && !host.inputLinked && host.win && !host.win.isDestroyed()) {
+      host.inputLinked = true;
+      this.input.attachRenderer(host.win.webContents, host.sid);
     }
   }
 
-  // The viewer draws its own cursor (zero delay) with the shape of ours.
-  async #startCursor(host) {
-    this.cursorTracker ??= createCursorTracker({
-      log: this.log,
-      encodePng: (bgra, width, height) => nativeImage.createFromBitmap(bgra, { width, height }).toDataURL(),
-      scale: () => screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).scaleFactor || 1,
-    }).catch((err) => {
-      this.log.warn(`[cursor] ${err.message}`);
-      return null;
-    });
-    const tracker = await this.cursorTracker;
-    if (!tracker || this.host !== host || host.state !== 'active') return;
-    tracker.start((msg) => {
-      if (this.host === host && host.win && !host.win.isDestroyed()) host.win.webContents.send('host:cursor', msg);
-    });
-  }
-
-  async #stopCursor() {
-    (await this.cursorTracker)?.stop();
-  }
-
-  /** Diagnostics for the end-to-end tests. */
-  async cursorShapeDebug() {
-    return (await this.cursorTracker)?.inspect() ?? null;
-  }
-
-  resyncCursor(ctx) {
-    if (ctx !== this.host) return;
-    this.cursorTracker?.then((tracker) => tracker?.resync());
+  /** Input that reached the main process (host window without its port yet). */
+  injectInput(ctx, events) {
+    if (ctx !== this.host || ctx.state !== 'active' || !Array.isArray(events)) return;
+    this.input.inject(ctx.sid, events);
   }
 
   // ───────────────────────── renderer plumbing ─────────────────────────
@@ -416,6 +375,10 @@ export class SessionManager extends EventEmitter {
 
   rendererReady(ctx) {
     ctx.ready = true;
+    if (ctx === this.host) {
+      ctx.inputLinked = false; // new or reloaded host window: give it a new port
+      this.syncInput();
+    }
     for (const data of ctx.queue.splice(0)) ctx.win.webContents.send('session:signal', data);
   }
 
@@ -460,8 +423,7 @@ export class SessionManager extends EventEmitter {
     if (this.host !== host) return;
     this.host = null;
     clearTimeout(host.consentTimer);
-    this.injector.releaseAll();
-    this.#stopCursor();
+    this.input.setSession(null);
     if (notifyPeer) this.signaling.close(host.sid, reason);
     if (host.powerBlocker != null) powerSaveBlocker.stop(host.powerBlocker);
     this.#setClipboard(host, false);

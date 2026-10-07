@@ -309,11 +309,13 @@ async function startHosting() {
     return { ...res, view: transfers.add(res.name, size, 'in') };
   };
   rtc.addEventListener('input', ({ detail }) => {
-    if (perms.control) api.send('input:events', detail);
+    if (!perms.control) return;
+    if (!window.pairdesk.inputPort.send(detail)) api.send('input:events', detail);
   });
   rtc.addEventListener('control-open', () => {
     sendInfo();
-    api.send('host:cursor-resync');
+    window.pairdesk.inputPort.send({ type: 'cursor-resync' });
+    if (inputBlocked) rtc.sendControl({ type: 'input-blocked', reason: inputBlocked });
   });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
@@ -381,6 +383,10 @@ function onControl(msg) {
     case 'quality':
       applyQuality(msg.mode);
       break;
+    case 'wake':
+      // The viewer's picture stopped changing: the screen may be asleep.
+      window.pairdesk.inputPort.send({ type: 'wake' });
+      break;
     case 'select-display':
       switchDisplay(String(msg.displayId));
       break;
@@ -420,9 +426,16 @@ api.on('session:state', ({ state, perms: p }) => {
 api.on('clipboard:local', (text) => {
   if (perms.clipboard && rtc?.pc.connectionState === 'connected') rtc.sendControl({ type: 'clipboard', text });
 });
-// Shape of the local mouse cursor, drawn by the viewer with zero delay.
-api.on('host:cursor', (msg) => {
-  if (perms.control) rtc?.sendControl(msg);
+// From the input helper: shape of the local mouse cursor (drawn by the viewer
+// with zero delay), and whether Windows currently blocks injected input.
+let inputBlocked = null;
+window.pairdesk.inputPort.on((msg) => {
+  if (msg?.type === 'cursor') {
+    if (perms.control) rtc?.sendControl(msg);
+  } else if (msg?.type === 'input-state') {
+    inputBlocked = msg.blocked || null;
+    if (perms.control) rtc?.sendControl({ type: 'input-blocked', reason: inputBlocked });
+  }
 });
 
 init = await api.invoke('session:init');
