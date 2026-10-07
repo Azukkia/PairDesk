@@ -315,6 +315,46 @@ async function scenario(host, ctrl) {
     }, { message: `host cursor near ${JSON.stringify(target2)} after quality changes` });
   }
 
+  // 5c. Grab the host panel by its title bar with the remote mouse and drag
+  // it: on Windows this starts a modal move loop in the host's main process,
+  // which must not stop the remote mouse (it used to freeze the session).
+  {
+    await setVisible(host.app, '/main/', false);
+    await sleep(500);
+    const before = await host.app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/host/'));
+      return win.getBounds();
+    });
+    const grab = { x: Math.round((before.x + 70) * screenInfo.scale), y: Math.round((before.y + 22) * screenInfo.scale) };
+    const g = await viewerPointFor(viewer, grab, screenInfo);
+    await viewer.mouse.move(g.x, g.y, { steps: 3 });
+    await poll(async () => {
+      const c = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor'));
+      return Math.abs(c.x - grab.x) <= tolerance && Math.abs(c.y - grab.y) <= tolerance;
+    }, { message: 'host cursor on the panel title bar' });
+    await viewer.mouse.down();
+    await viewer.mouse.move(g.x - 30, g.y - 20, { steps: 6 });
+    await viewer.mouse.move(g.x - 60, g.y - 40, { steps: 6 });
+    await viewer.mouse.up();
+    await sleep(500);
+    const after = await host.app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/host/'));
+      return win.getBounds();
+    });
+    process.stderr.write(`host panel dragged from ${JSON.stringify(before)} to ${JSON.stringify(after)}\n`);
+    // The remote mouse still works afterwards.
+    const target3 = { x: Math.round((before.x - 150) * screenInfo.scale), y: Math.round((before.y - 120) * screenInfo.scale) };
+    const p3 = await viewerPointFor(viewer, target3, screenInfo);
+    await viewer.mouse.move(p3.x, p3.y, { steps: 5 });
+    await poll(async () => {
+      const c = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor'));
+      return Math.abs(c.x - target3.x) <= tolerance && Math.abs(c.y - target3.y) <= tolerance;
+    }, { timeout: 10_000, message: `remote mouse still working after dragging the host panel (${JSON.stringify(target3)})` });
+    await setVisible(host.app, '/main/', true);
+    await placeWindow(host.app, '/main/', placed.outer, true);
+    await sleep(300);
+  }
+
   // 6. Chat from the controller to the host panel.
   await viewer.click('#chat-button');
   await viewer.fill('.chat-panel input', 'Bonjour depuis PairDesk !');
