@@ -74,9 +74,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Build and upload to the draft release
-        run: npx electron-builder ${{ matrix.args }} --publish always -c.publish.releaseType=draft
+        run: npx electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Upload into the draft created above; it is published at the end.
+          EP_DRAFT: "true"
 
   publish:
     name: Publish release

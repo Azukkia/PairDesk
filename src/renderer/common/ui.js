@@ -5,8 +5,10 @@ import { createTranslator } from '../shared/i18n.js';
 export const api = window.pairdesk;
 
 let translate = createTranslator('fr');
+let currentLang = 'fr';
 export const t = (key, vars) => translate(key, vars);
 export function setLanguage(lang) {
+  currentLang = lang;
   translate = createTranslator(lang);
   document.documentElement.lang = lang;
 }
@@ -147,8 +149,9 @@ export function closeMenu() {
 }
 
 export function formatBytes(n) {
-  if (n < 1024) return `${n} o`;
-  const units = ['Ko', 'Mo', 'Go', 'To'];
+  const fr = currentLang === 'fr';
+  if (n < 1024) return `${n} ${fr ? 'o' : 'B'}`;
+  const units = fr ? ['Ko', 'Mo', 'Go', 'To'] : ['KB', 'MB', 'GB', 'TB'];
   let v = n / 1024;
   let i = 0;
   while (v >= 1024 && i < units.length - 1) {

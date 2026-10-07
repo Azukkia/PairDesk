@@ -83,3 +83,18 @@ jobs:
             dist/PairDesk-Setup-*.exe
             dist/latest.yml
           retention-days: 30
+
+  server-image:
+    name: Server Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t pairdesk-server server
+      - name: Run it and check the health endpoint
+        run: |
+          docker run -d --name pd -p 8080:8080 pairdesk-server
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/health && exit 0; sleep 1; done
+          docker logs pd
+          exit 1

@@ -284,7 +284,7 @@ function startStats() {
     const parts = [];
     if (s.relayed != null) parts.push(s.relayed ? t('viewer.relayed') : t('viewer.direct'));
     if (s.rtt != null) parts.push(`${s.rtt} ms`);
-    if (s.fps != null) parts.push(`${Math.round(s.fps)} i/s`);
+    if (s.fps != null) parts.push(t('viewer.fps', { n: Math.round(s.fps) }));
     if (s.bitrate != null) parts.push(`${(s.bitrate / 1e6).toFixed(1)} Mb/s`);
     if (s.width) parts.push(`${s.width}×${s.height}`);
     ui.stats.textContent = parts.join(' · ');

@@ -6,6 +6,7 @@ ENV NODE_ENV=production \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
+RUN mkdir -p /data && chown node:node /data
 VOLUME ["/data"]
 EXPOSE 8080
 USER node
