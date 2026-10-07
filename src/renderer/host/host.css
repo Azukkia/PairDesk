@@ -1,0 +1,36 @@
+/* Host panel: small always-on-top window on the controlled computer. */
+
+body.host { overflow: hidden; }
+#app { height: 100vh; display: flex; flex-direction: column; background: var(--bg-elev); border: 1px solid var(--border-strong); overflow: hidden; }
+
+.host-head {
+  display: flex; align-items: center; gap: 9px; height: 44px; padding: 0 6px 0 12px; flex: none;
+  background: var(--brand-gradient); color: #fff; -webkit-app-region: drag;
+}
+.host-head img { width: 22px; height: 22px; }
+.host-head .title { flex: 1; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.host-head .timer { font-size: 12px; font-variant-numeric: tabular-nums; opacity: 0.9; }
+.host-head .icon-btn { color: rgba(255, 255, 255, 0.85); -webkit-app-region: no-drag; width: 30px; height: 30px; }
+.host-head .icon-btn:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.host-head .live { width: 8px; height: 8px; border-radius: 50%; background: #ff5b5b; box-shadow: 0 0 0 3px rgba(255, 91, 91, 0.3); animation: pulse 1.6s ease-in-out infinite; }
+
+.host-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; flex: none; }
+.who { display: flex; align-items: center; gap: 11px; }
+.who .avatar { width: 38px; height: 38px; border-radius: 11px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; background: var(--brand-gradient); }
+.who .text { min-width: 0; }
+.who b { display: block; font-size: 13.5px; line-height: 1.3; }
+.who .sub { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.host-actions { display: flex; gap: 6px; }
+.host-actions .btn { flex: 1; height: 32px; padding: 0 8px; font-size: 13px; }
+.host-status { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.host-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+.host-transfers { display: flex; flex-direction: column; gap: 6px; padding: 0 14px; flex: none; }
+.host-transfers:not(:empty) { padding-bottom: 12px; }
+.host-transfers .transfer { box-shadow: none; animation: none; }
+.countdown { font-size: 12px; color: var(--text-muted); }
+.host-error { font-size: 12.5px; color: var(--danger); }
+
+.host-chat { flex: 1; display: flex; flex-direction: column; border-top: 1px solid var(--border); min-height: 0; }
+.host-chat .chat-messages { padding: 10px; }
+
+body.collapsed .host-body, body.collapsed .host-chat { display: none; }

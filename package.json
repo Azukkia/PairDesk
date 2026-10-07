@@ -1,0 +1,47 @@
+{
+  "name": "pairdesk",
+  "productName": "PairDesk",
+  "version": "1.0.0",
+  "description": "PairDesk — contrôle à distance et partage d'écran pair-à-pair, sécurisé et gratuit.",
+  "author": {
+    "name": "Azukkia",
+    "email": "azukkia.marechal@gmail.com"
+  },
+  "homepage": "https://github.com/Azukkia/PairDesk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Azukkia/PairDesk.git"
+  },
+  "private": true,
+  "type": "module",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --pairdesk-dev",
+    "test": "node --test \"test/unit/*.test.js\"",
+    "test:e2e": "node --test --test-concurrency=1 \"test/e2e/*.test.js\"",
+    "icons": "node scripts/generate-icons.mjs",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "server": "node server/src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "electron-updater": "^6.8.9",
+    "koffi": "^3.3.2",
+    "mqtt": "^5.16.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "aedes": "^1.2.0",
+    "electron": "^44.6.0",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.63.0"
+  }
+}

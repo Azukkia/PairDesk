@@ -1,0 +1,17 @@
+{
+  "name": "pairdesk-server",
+  "version": "1.0.0",
+  "description": "PairDesk signaling server (optional, self-hosted)",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

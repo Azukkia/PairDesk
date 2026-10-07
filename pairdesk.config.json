@@ -1,0 +1,13 @@
+{
+  "defaultServerUrl": "",
+  "publicBrokers": [
+    "wss://broker.emqx.io:8084/mqtt",
+    "wss://broker.hivemq.com:8884/mqtt",
+    "wss://test.mosquitto.org:8081/mqtt",
+    "wss://mqtt.eclipseprojects.io:443/mqtt"
+  ],
+  "iceServers": [
+    { "urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    { "urls": ["stun:stun.cloudflare.com:3478"] }
+  ]
+}
