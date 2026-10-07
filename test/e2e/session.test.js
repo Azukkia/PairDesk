@@ -19,13 +19,17 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const artifacts = process.env.PAIRDESK_E2E_ARTIFACTS || path.join(os.tmpdir(), 'pairdesk-e2e');
 fs.mkdirSync(artifacts, { recursive: true });
 
+// PAIRDESK_PACKAGED_EXE runs the test against a packaged build instead of
+// the sources (e.g. dist/win-unpacked/PairDesk.exe).
+const packaged = process.env.PAIRDESK_PACKAGED_EXE ? path.resolve(process.env.PAIRDESK_PACKAGED_EXE) : null;
+
 async function launch(name, serverUrl, extraEnv = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), `pd-${name}-`));
   const downloads = path.join(profile, 'downloads');
-  const args = [root, `--pairdesk-profile=${profile}`];
+  const args = packaged ? [`--pairdesk-profile=${profile}`] : [root, `--pairdesk-profile=${profile}`];
   if (process.platform === 'linux') args.push('--no-sandbox', '--disable-gpu');
   const app = await electron.launch({
-    executablePath: electronPath,
+    executablePath: packaged || electronPath,
     args,
     env: { ...process.env, PAIRDESK_SERVER_URL: serverUrl, PAIRDESK_E2E: '1', PAIRDESK_DOWNLOADS_DIR: downloads, ...extraEnv },
     timeout: 60_000,
@@ -70,7 +74,8 @@ function placeWindow(app, fragment, bounds, top = false) {
     win.setMinimumSize(300, 200);
     win.setBounds(bounds);
     if (top) win.moveTop();
-    return win.getBounds();
+    // Content (client area) bounds: excludes the title bar and borders.
+    return { outer: win.getBounds(), content: win.getContentBounds() };
   }, { fragment, bounds, top });
 }
 
@@ -115,6 +120,10 @@ test('two PairDesk instances: connect, view, control, chat, files, disconnect', 
   await poll(async () => (await host.main.textContent('.statusbar')).includes('127.0.0.1'), { message: 'host online' });
   await poll(async () => (await host.main.$('.dot.online')) && (await ctrl.main.$('.dot.online')), { message: 'both online' });
 
+  // Remote control must be available (native input injection loaded).
+  const hostState = await host.main.evaluate(() => window.pairdesk.invoke('app:state'));
+  assert.equal(hostState.input.available, true, `input injection unavailable: ${hostState.input.reason}`);
+
   const hostId = (await host.main.textContent('#my-id')).replace(/\s/g, '');
   const password = (await host.main.textContent('#my-password')).trim();
   assert.match(hostId, /^\d{9}$/);
@@ -152,9 +161,9 @@ test('two PairDesk instances: connect, view, control, chat, files, disconnect', 
 
   // Layout: host main window top-left (on top), viewer on the right.
   const work = screenInfo.work;
-  const hostBounds = await placeWindow(host.app, '/main/', { x: work.x, y: work.y, width: 1000, height: 680 }, false);
+  const placed = await placeWindow(host.app, '/main/', { x: work.x, y: work.y, width: 1000, height: 680 }, false);
   await placeWindow(ctrl.app, '/viewer/', { x: work.x + work.width - 700, y: work.y, width: 700, height: 480 }, false);
-  await placeWindow(host.app, '/main/', hostBounds, true);
+  const hostBounds = (await placeWindow(host.app, '/main/', placed.outer, true)).content;
   // The controller's main window would otherwise sit above the host's one.
   await setVisible(ctrl.app, '/main/', false);
   await sleep(1500);

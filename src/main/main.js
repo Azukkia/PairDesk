@@ -425,7 +425,7 @@ async function main() {
     },
   });
   applyLaunchAtStartup(settings.get('launchAtStartup'));
-  updater.schedule(settings.get('autoCheckUpdates'));
+  updater.schedule(settings.get('autoCheckUpdates') && !E2E);
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient('pairdesk');
 
   const openDeepLink = (id) => {

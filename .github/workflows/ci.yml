@@ -66,6 +66,11 @@ jobs:
           retention-days: 7
       - name: Build the Windows installer
         run: npx electron-builder --win --x64 --publish never
+      - name: End-to-end test of the packaged application
+        run: npm run test:e2e
+        env:
+          PAIRDESK_PACKAGED_EXE: dist/win-unpacked/PairDesk.exe
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}\e2e-packaged
       - uses: actions/upload-artifact@v4
         with:
           name: PairDesk-Setup-windows
