@@ -13,6 +13,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import electronPath from 'electron';
 import { _electron as electron } from 'playwright-core';
+import http from 'node:http';
+import { WebSocketServer, createWebSocketStream } from 'ws';
+import { Aedes } from 'aedes';
 import { createServer } from '../../server/src/server.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -23,7 +26,38 @@ fs.mkdirSync(artifacts, { recursive: true });
 // the sources (e.g. dist/win-unpacked/PairDesk.exe).
 const packaged = process.env.PAIRDESK_PACKAGED_EXE ? path.resolve(process.env.PAIRDESK_PACKAGED_EXE) : null;
 
-async function launch(name, serverUrl, extraEnv = {}) {
+// PAIRDESK_E2E_TRANSPORT=mqtt exercises the default "public relays" mode
+// with a local MQTT broker instead of the PairDesk server.
+const useMqtt = process.env.PAIRDESK_E2E_TRANSPORT === 'mqtt';
+
+async function startSignaling() {
+  if (!useMqtt) {
+    const server = createServer({ port: 0, host: '127.0.0.1' });
+    const port = await server.listen();
+    return { env: { PAIRDESK_SERVER_URL: `ws://127.0.0.1:${port}/ws` }, close: () => server.close() };
+  }
+  const brokers = [];
+  for (let i = 0; i < 2; i++) {
+    const aedes = await Aedes.createBroker();
+    const httpServer = http.createServer();
+    const wss = new WebSocketServer({ server: httpServer });
+    wss.on('connection', (socket, req) => aedes.handle(createWebSocketStream(socket), req));
+    await new Promise((r) => httpServer.listen(0, '127.0.0.1', r));
+    brokers.push({ aedes, httpServer, wss, url: `ws://127.0.0.1:${httpServer.address().port}/mqtt` });
+  }
+  return {
+    env: { PAIRDESK_MQTT_BROKERS: brokers.map((b) => b.url).join(',') },
+    async close() {
+      for (const b of brokers) {
+        for (const c of b.wss.clients) c.terminate();
+        await new Promise((r) => b.httpServer.close(r));
+        await new Promise((r) => b.aedes.close(r));
+      }
+    },
+  };
+}
+
+async function launch(name, signalingEnv, extraEnv = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), `pd-${name}-`));
   const downloads = path.join(profile, 'downloads');
   const args = packaged ? [`--pairdesk-profile=${profile}`] : [root, `--pairdesk-profile=${profile}`];
@@ -31,7 +65,7 @@ async function launch(name, serverUrl, extraEnv = {}) {
   const app = await electron.launch({
     executablePath: packaged || electronPath,
     args,
-    env: { ...process.env, PAIRDESK_SERVER_URL: serverUrl, PAIRDESK_E2E: '1', PAIRDESK_DOWNLOADS_DIR: downloads, ...extraEnv },
+    env: { ...process.env, ...signalingEnv, PAIRDESK_E2E: '1', PAIRDESK_DEBUG: '1', PAIRDESK_DOWNLOADS_DIR: downloads, ...extraEnv },
     timeout: 60_000,
   });
   app.process().stderr.on('data', (d) => {
@@ -73,7 +107,12 @@ function placeWindow(app, fragment, bounds, top = false) {
     const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes(fragment));
     win.setMinimumSize(300, 200);
     win.setBounds(bounds);
-    if (top) win.moveTop();
+    if (top) {
+      // Windows does not let a background process raise its window: keep the
+      // target window above the viewer so that injected clicks reach it.
+      win.setAlwaysOnTop(true);
+      win.moveTop();
+    }
     // Content (client area) bounds: excludes the title bar and borders.
     return { outer: win.getBounds(), content: win.getContentBounds() };
   }, { fragment, bounds, top });
@@ -103,21 +142,44 @@ async function viewerPointFor(viewer, screenPoint, screenSize) {
   }, { screenPoint, screenSize });
 }
 
+async function dumpDiagnostics(instances) {
+  for (const inst of instances) {
+    for (const [i, page] of inst.app.windows().entries()) {
+      const name = `${inst.name}-${i}-${page.url().split('/').slice(-2, -1)[0] || 'window'}`;
+      await page.screenshot({ path: path.join(artifacts, `failure-${name}.png`), timeout: 5000 }).catch(() => {});
+    }
+    try {
+      const lines = fs.readFileSync(path.join(inst.profile, 'logs', 'main.log'), 'utf8').trim().split('\n');
+      process.stderr.write(`\n----- ${inst.name} main.log (last 80 lines) -----\n${lines.slice(-80).join('\n')}\n`);
+    } catch (err) {
+      process.stderr.write(`no log for ${inst.name}: ${err.message}\n`);
+    }
+  }
+}
+
 test('two PairDesk instances: connect, view, control, chat, files, disconnect', { timeout: 240_000 }, async (t) => {
-  const server = createServer({ port: 0, host: '127.0.0.1' });
-  const port = await server.listen();
-  const url = `ws://127.0.0.1:${port}/ws`;
-  const host = await launch('host', url);
-  const ctrl = await launch('ctrl', url);
+  const signaling = await startSignaling();
+  const host = await launch('host', signaling.env);
+  const ctrl = await launch('ctrl', signaling.env);
+  host.name = 'host';
+  ctrl.name = 'ctrl';
   t.after(async () => {
     await host.app.close().catch(() => {});
     await ctrl.app.close().catch(() => {});
-    await server.close();
+    await signaling.close();
   });
+  try {
+    await scenario(host, ctrl);
+  } catch (err) {
+    await dumpDiagnostics([host, ctrl]);
+    throw err;
+  }
+});
+
+async function scenario(host, ctrl) {
   const shot = async (page, name) => page.screenshot({ path: path.join(artifacts, `${name}.png`) }).catch(() => {});
 
   // Both instances reach the network.
-  await poll(async () => (await host.main.textContent('.statusbar')).includes('127.0.0.1'), { message: 'host online' });
   await poll(async () => (await host.main.$('.dot.online')) && (await ctrl.main.$('.dot.online')), { message: 'both online' });
 
   // Remote control must be available (native input injection loaded).
@@ -240,4 +302,4 @@ test('two PairDesk instances: connect, view, control, chat, files, disconnect', 
   await panel2.click('#host-end');
   await poll(() => viewer2.evaluate(() => document.querySelector('#viewer-overlay')?.dataset.kind === 'ended'), { message: 'viewer notified of the end' });
   await shot(viewer2, 'viewer-ended');
-});
+}

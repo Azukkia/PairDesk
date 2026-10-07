@@ -28,10 +28,15 @@ jobs:
         run: npm test
       - name: Install X11 test dependencies
         run: sudo apt-get update && sudo apt-get install -y xvfb libxtst6
-      - name: End-to-end test (two app instances under Xvfb)
+      - name: End-to-end test (two app instances under Xvfb, PairDesk server)
         run: xvfb-run -a -s "-screen 0 1600x1000x24" npm run test:e2e
         env:
           PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e
+      - name: End-to-end test (default mode, MQTT relays)
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" npm run test:e2e
+        env:
+          PAIRDESK_E2E_TRANSPORT: mqtt
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-mqtt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

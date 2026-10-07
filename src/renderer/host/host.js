@@ -176,7 +176,10 @@ async function switchDisplay(displayId) {
   }
 }
 
+let hostingStarted = false;
 async function startHosting() {
+  if (hostingStarted) return;
+  hostingStarted = true;
   clearInterval(timers.countdown);
   showActive(t('host.connecting'));
   displays = init.displays || [];
@@ -186,6 +189,19 @@ async function startHosting() {
     return;
   }
   api.send('host:set-display', current.displayId);
+
+  // Capture first so that the first offer already contains the screen track
+  // (a single negotiation round).
+  let stream;
+  try {
+    console.info(`[host] capturing ${current.sourceId} (${current.width}x${current.height})`);
+    stream = await capture(current, perms.audio);
+    console.info(`[host] capture started: ${stream.getTracks().map((tr) => tr.kind).join(', ')}`);
+  } catch (err) {
+    showCaptureError(err.message || err.name);
+    api.send('session:failed', `capture: ${err.name}`);
+    return;
+  }
 
   rtc = new RtcSession({ role: 'host', iceServers: init.iceServers });
   rtc.acceptFile = async ({ name, size }) => {
@@ -201,14 +217,6 @@ async function startHosting() {
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
 
-  let stream;
-  try {
-    stream = await capture(current, perms.audio);
-  } catch (err) {
-    showCaptureError(err.message || err.name);
-    api.send('session:failed', `capture: ${err.name}`);
-    return;
-  }
   for (const track of stream.getTracks()) {
     const sender = rtc.pc.addTrack(track, stream);
     if (track.kind === 'video') videoSender = sender;
@@ -292,7 +300,7 @@ function end() {
 // ───────────────────────────── boot ─────────────────────────────
 
 api.on('session:state', ({ state, perms: p }) => {
-  if (state === 'active' && !rtc) {
+  if (state === 'active') {
     perms = p || perms;
     startHosting();
   }

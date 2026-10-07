@@ -28,9 +28,18 @@ export class RtcSession extends EventTarget {
 
     const pc = this.pc;
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) api.send('session:signal', { candidate: candidate.toJSON() });
+      if (!candidate) {
+        console.info('[rtc] local ICE gathering complete');
+        return;
+      }
+      console.info(`[rtc] local candidate ${candidate.type || '?'} ${candidate.protocol || ''}`);
+      api.send('session:signal', { candidate: candidate.toJSON() });
     };
-    pc.onconnectionstatechange = () => this.#emit('state', pc.connectionState);
+    pc.oniceconnectionstatechange = () => console.info(`[rtc] ice ${pc.iceConnectionState}`);
+    pc.onconnectionstatechange = () => {
+      console.info(`[rtc] connection ${pc.connectionState}`);
+      this.#emit('state', pc.connectionState);
+    };
     pc.ontrack = (event) => this.#emit('track', event);
     pc.ondatachannel = ({ channel }) => this.#adoptChannel(channel);
 
@@ -39,7 +48,11 @@ export class RtcSession extends EventTarget {
       this.#adoptChannel(pc.createDataChannel('input', { ordered: true }));
       pc.onnegotiationneeded = () => this.#offer();
     }
-    this.offSignal = api.on('session:signal', (data) => this.#onSignal(data));
+    // Signaling messages are applied strictly one after the other.
+    this.signalChain = Promise.resolve();
+    this.offSignal = api.on('session:signal', (data) => {
+      this.signalChain = this.signalChain.then(() => this.#onSignal(data));
+    });
   }
 
   #emit(type, detail) {
@@ -57,6 +70,7 @@ export class RtcSession extends EventTarget {
       this.makingOffer = true;
       const offer = await this.pc.createOffer(options);
       await this.pc.setLocalDescription(offer);
+      console.info(`[rtc] sending offer${options?.iceRestart ? ' (ICE restart)' : ''}`);
       api.send('session:signal', { description: this.pc.localDescription.toJSON() });
     } catch (err) {
       console.error('offer failed', err);
@@ -74,6 +88,7 @@ export class RtcSession extends EventTarget {
     const pc = this.pc;
     try {
       if (data.description) {
+        console.info(`[rtc] received ${data.description.type}`);
         await pc.setRemoteDescription(data.description);
         if (data.description.type === 'offer') {
           await pc.setLocalDescription(await pc.createAnswer());
