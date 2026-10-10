@@ -15,6 +15,8 @@ import { MqttTransport } from '../../src/main/signaling/transport-mqtt.js';
 import { WsTransport } from '../../src/main/signaling/transport-ws.js';
 import { derivePrs } from '../../src/main/crypto/prs.js';
 import { generateDeviceId } from '../../src/shared/protocol.js';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { artifacts, startSignaling, launch, waitForWindow, poll, sleep, dumpDiagnostics } from './helpers.js';
 
@@ -165,12 +167,15 @@ async function scenario(pc, phone) {
 
 /** Opens "PairDesk Camera" like any application would, and checks the picture is the phone's (red). */
 async function checkVirtualWebcam(pc) {
-  const result = await pc.app.evaluate(async ({ BrowserWindow, session }) => {
+  // A secure context is needed for navigator.mediaDevices: a file, not a data: URL.
+  const page = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-webcam-')), 'webcam.html');
+  fs.writeFileSync(page, '<!doctype html><title>webcam</title><body></body>');
+  const result = await pc.app.evaluate(async ({ BrowserWindow, session }, file) => {
     const ses = session.fromPartition('e2e-webcam-user');
     ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
     ses.setPermissionCheckHandler(() => true);
     const win = new BrowserWindow({ width: 320, height: 240, show: false, webPreferences: { partition: 'e2e-webcam-user', backgroundThrottling: false } });
-    await win.loadURL('data:text/html,<body></body>');
+    await win.loadFile(file);
     return win.webContents.executeJavaScript(`(async () => {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cams = devices.filter((d) => d.kind === 'videoinput').map((d) => d.label);
@@ -193,7 +198,7 @@ async function checkVirtualWebcam(pc) {
       stream.getTracks().forEach((tr) => tr.stop());
       return { cams, px, size };
     })()`).finally(() => win.destroy());
-  });
+  }, page);
   process.stderr.write(`webcams: ${JSON.stringify(result)}\n`);
   assert.ok(result.px, `"PairDesk Camera" listed among the webcams (${JSON.stringify(result.cams)})`);
   assert.deepEqual(result.size, [1280, 720]);
