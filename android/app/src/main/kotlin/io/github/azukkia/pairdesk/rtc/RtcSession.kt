@@ -66,6 +66,9 @@ enum class RtcState(val wire: String) {
     CLOSED("closed"),
 }
 
+/** A remote track and its kind (`video` or `audio`), read once: the track is only valid until the session closes. */
+class RemoteTrack(val track: MediaStreamTrack, val kind: String)
+
 /** What happens in an [RtcSession], in order (see [RtcSession.events]). */
 sealed interface RtcEvent {
     data class State(val state: RtcState) : RtcEvent
@@ -153,10 +156,10 @@ class RtcSession(
     /** True while the `control` channel is open. */
     val controlOpen: StateFlow<Boolean> = _controlOpen.asStateFlow()
 
-    private val _remoteTracks = MutableStateFlow<List<MediaStreamTrack>>(emptyList())
+    private val _remoteTracks = MutableStateFlow<List<RemoteTrack>>(emptyList())
 
-    /** Remote tracks received so far (emptied when the session closes). */
-    val remoteTracks: StateFlow<List<MediaStreamTrack>> = _remoteTracks.asStateFlow()
+    /** Remote tracks received so far (emptied when the session closes, before the tracks are released). */
+    val remoteTracks: StateFlow<List<RemoteTrack>> = _remoteTracks.asStateFlow()
 
     private val eventChannel = Channel<RtcEvent>(EVENT_BUFFER, BufferOverflow.DROP_OLDEST)
 
@@ -369,7 +372,7 @@ class RtcSession(
                 }
             }
         }
-        _remoteTracks.update { it + track }
+        _remoteTracks.update { it + RemoteTrack(track, kind) }
         emit(RtcEvent.Track(track, kind))
     }
 

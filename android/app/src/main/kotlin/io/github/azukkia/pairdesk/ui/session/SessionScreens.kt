@@ -56,8 +56,10 @@ import io.github.azukkia.pairdesk.rtc.RtcEvent
 import io.github.azukkia.pairdesk.rtc.RtcRole
 import io.github.azukkia.pairdesk.rtc.RtcSession
 import io.github.azukkia.pairdesk.rtc.RtcState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 
@@ -116,7 +118,7 @@ fun ViewerScreen(graph: AppGraph, sid: String, onExit: () -> Unit) {
                     state == RtcState.FAILED -> R.string.session_failed
                     state == RtcState.DISCONNECTED -> R.string.session_reconnecting
                     state != RtcState.CONNECTED -> R.string.session_negotiating
-                    tracks.none { it.kind() == "video" } -> R.string.session_placeholder_viewer
+                    tracks.none { it.kind == "video" } -> R.string.session_placeholder_viewer
                     else -> null
                 }
                 if (overlay != null) StatusOverlay(stringResource(overlay), progress = state != RtcState.FAILED)
@@ -190,8 +192,6 @@ fun HostSessionScreen(graph: AppGraph, sid: String, onExit: () -> Unit) {
             stringResource(R.string.incoming_active, peerName) + "\n\n" + stringResource(R.string.session_placeholder_host),
         )
     }
-    // Only an accepted session has a screen.
-    if (session != null && session.state != IncomingState.ACTIVE) onExit()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -302,7 +302,7 @@ fun IncomingRequestDialog(graph: AppGraph, onAccepted: (String) -> Unit) {
     val remaining by produceState(initialValue = secondsLeft(request.deadline), request.sid) {
         while (true) {
             value = secondsLeft(request.deadline)
-            kotlinx.coroutines.delay(1_000)
+            delay(1_000)
         }
     }
     AlertDialog(
@@ -344,6 +344,3 @@ fun IncomingRequestDialog(graph: AppGraph, onAccepted: (String) -> Unit) {
 
 private fun secondsLeft(deadline: Long?): Int? =
     deadline?.let { ((it - System.currentTimeMillis() + 999) / 1000).toInt().coerceAtLeast(0) }
-
-private fun kotlinx.coroutines.CoroutineScope.launch(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
-    kotlinx.coroutines.launch(this, block = block)
