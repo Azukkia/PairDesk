@@ -39,6 +39,7 @@ export class MqttTransport extends EventEmitter {
 
   stop() {
     for (const entry of this.entries) {
+      clearTimeout(entry.retry);
       try { entry.client.end(true); } catch { /* ignore */ }
     }
     this.entries = [];
@@ -56,12 +57,17 @@ export class MqttTransport extends EventEmitter {
       protocolVersion: 4,
       ...this.clientOptions,
     });
-    const entry = { url, client, connected: false };
+    const entry = { url, client, connected: false, retry: null };
     this.entries.push(entry);
     client.on('connect', () => {
       client.subscribe(this.topic, { qos: 1 }, (err) => {
         if (err) {
+          // Connected but deaf: start over on this broker in a moment.
           this.log?.warn(`[mqtt] subscribe failed on ${url}: ${err.message}`);
+          clearTimeout(entry.retry);
+          entry.retry = setTimeout(() => {
+            if (this.entries.includes(entry)) client.end(true, {}, () => client.reconnect());
+          }, 5000);
           return;
         }
         entry.connected = true;
@@ -122,7 +128,8 @@ export class MqttTransport extends EventEmitter {
     const live = this.entries.filter((e) => e.connected);
     if (!live.length) throw Object.assign(new Error('Not connected to the PairDesk network'), { code: 'network' });
     const payload = JSON.stringify({ mid: randomBytes(12).toString('base64url'), from: this.myId, data });
-    if (payload.length > MAX_PAYLOAD) throw Object.assign(new Error('Message too large'), { code: 'too-large' });
+    // Bytes, as the receivers count them (accented names take more than one).
+    if (Buffer.byteLength(payload) > MAX_PAYLOAD) throw Object.assign(new Error('Message too large'), { code: 'too-large' });
     const topic = topicFor(this.prefix, to);
     const attempts = live.map((e) => new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('publish timeout')), PUBLISH_TIMEOUT_MS);

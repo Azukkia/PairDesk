@@ -56,4 +56,7 @@ test('MQTT transport: redundant brokers, de-duplication and a full handshake', a
   host.on('incoming', (s) => host.accept(s.sid, { name: 'mqtt-host' }));
   const session = await ctrl.connect('123123123', prs);
   assert.equal(session.peerName, 'mqtt-host');
+
+  // The size limit counts bytes, like the receivers: 40 000 "é" are 80 000 bytes.
+  await assert.rejects(ct.send('123123123', { t: 'x', text: 'é'.repeat(40_000) }), { code: 'too-large' });
 });
