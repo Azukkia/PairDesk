@@ -20,11 +20,12 @@ test('rich parts: text first, everything in one message', () => {
   assert.deepEqual(richParts({ text: 'x'.repeat(MAX_TEXT_BYTES + 1), html: '<i>ok</i>' }), { html: '<i>ok</i>' });
 });
 
-test('clipboard sync: text, html, image and files, without echo', async () => {
+test('clipboard sync: text, html, image and files, without echo', async (t) => {
   const board = fakeClipboard({ text: 'start' });
   let copied = null;
   const files = { read: () => copied, write: (paths) => { copied = paths; return true; } };
   const sync = new ClipboardSync({ clipboard: board, ClipboardItem: FakeClipboardItem, files, intervalMs: 10, log });
+  t.after(() => sync.release()); // a failed assertion must not leave the poller running
   const seen = [];
   sync.on('change', (c) => seen.push(c));
   sync.acquire();
@@ -61,9 +62,11 @@ test('clipboard sync: text, html, image and files, without echo', async () => {
   assert.deepEqual(copied, ['/tmp/x']);
 });
 
-test('clipboard sync: copied files without a native backend (Linux)', async () => {
+// Linux only: Windows reads copied files natively (CF_HDROP), and these are POSIX paths.
+test('clipboard sync: copied files without a native backend (Linux)', { skip: process.platform === 'win32' }, async (t) => {
   const board = fakeClipboard();
   const sync = new ClipboardSync({ clipboard: board, ClipboardItem: FakeClipboardItem, intervalMs: 10, log });
+  t.after(() => sync.release());
   const seen = [];
   sync.on('change', (c) => seen.push(c));
   sync.acquire();
@@ -88,10 +91,13 @@ test('native helpers: CF_HDROP buffer and uri lists', () => {
   assert.equal(buf.readUInt32LE(0), 20);
   assert.equal(buf.readUInt32LE(16), 1);
   assert.equal(buf.subarray(20).toString('utf16le'), 'C:\\a.txt\0D:\\dossier é\0\0');
-  const list = uriList(['/home/me/a b.txt', '/home/me/été']);
-  assert.deepEqual(list, ['file:///home/me/a%20b.txt', 'file:///home/me/%C3%A9t%C3%A9']);
-  assert.deepEqual(parseUriList(`${list.join('\r\n')}\r\n# comment\r\nhttp://x`), ['/home/me/a b.txt', '/home/me/été']);
-  assert.deepEqual(parseUriList(`copy\n${list[0]}`), ['/home/me/a b.txt']);
+  const win = process.platform === 'win32';
+  const dir = win ? 'C:\\me\\' : '/home/me/';
+  const url = win ? 'file:///C:/me/' : 'file:///home/me/';
+  const list = uriList([`${dir}a b.txt`, `${dir}été`]);
+  assert.deepEqual(list, [`${url}a%20b.txt`, `${url}%C3%A9t%C3%A9`]);
+  assert.deepEqual(parseUriList(`${list.join('\r\n')}\r\n# comment\r\nhttp://x`), [`${dir}a b.txt`, `${dir}été`]);
+  assert.deepEqual(parseUriList(`copy\n${list[0]}`), [`${dir}a b.txt`]);
 });
 
 test('relative names are made safe', () => {
