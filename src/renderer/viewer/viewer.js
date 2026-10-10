@@ -45,6 +45,9 @@ const clip = new ClipboardBridge({
 });
 
 const canControl = () => st.connected && !st.ended && Boolean(init?.caps?.control);
+// The remote is a phone (PairDesk for Android): text instead of key codes,
+// and its navigation buttons in the toolbar.
+const androidHost = () => init?.peer?.platform === 'android';
 
 // ───────────────────────────── UI ─────────────────────────────
 
@@ -67,6 +70,12 @@ function buildUI() {
   ui.scaleBtn = toolButton('fit', t('viewer.original'), () => setScale(st.scale === 'fit' ? 'original' : 'fit'), 'scale-button');
   ui.qualityBtn = toolButton('gauge', t('viewer.quality'), (b) => qualityMenu(b), 'quality-button');
   ui.keysBtn = toolButton('keyboard', t('viewer.actions'), (b) => keysMenu(b), 'keys-button');
+  const phoneAction = (action) => () => {
+    if (canControl()) sendReliable([['a', action]]);
+  };
+  ui.backBtn = toolButton('back', t('viewer.androidBack'), phoneAction('back'), 'android-back');
+  ui.homeBtn = toolButton('home', t('viewer.androidHome'), phoneAction('home'), 'android-home');
+  ui.recentsBtn = toolButton('square', t('viewer.androidRecents'), phoneAction('recents'), 'android-recents');
   ui.clipBtn = toolButton('clipboard', t('viewer.clipboard'), () => setClipboard(!st.clipboard), 'clipboard-button');
   ui.fileBtn = toolButton('upload', t('viewer.sendFile'), () => ui.fileInput.click(), 'file-button');
   ui.chatBtn = toolButton('message', t('viewer.chat'), () => toggleChat(), 'chat-button');
@@ -77,7 +86,7 @@ function buildUI() {
 
   ui.topbar = h('header', { class: 'topbar' },
     h('div', { class: 'peer' }, ui.dot, ui.name, ui.id, ui.viewOnly, ui.delay, ui.stats),
-    h('div', { class: 'tools' }, ui.monitorBtn, ui.nextScreenBtn, ui.scaleBtn, ui.qualityBtn, ui.keysBtn, h('span', { class: 'sep' }),
+    h('div', { class: 'tools' }, ui.monitorBtn, ui.nextScreenBtn, ui.backBtn, ui.homeBtn, ui.recentsBtn, ui.scaleBtn, ui.qualityBtn, ui.keysBtn, h('span', { class: 'sep' }),
       ui.clipBtn, ui.fileBtn, ui.chatBtn, ui.soundBtn, h('span', { class: 'sep' }), ui.fsBtn, ui.endBtn, ui.fileInput));
 
   ui.video = h('video', { id: 'remote-screen', autoplay: true, playsInline: true, muted: true });
@@ -113,7 +122,8 @@ function refreshToolbar() {
   ui.viewOnly.hidden = Boolean(caps.control) || !live;
   ui.scaleBtn.hidden = !live;
   ui.qualityBtn.hidden = !live;
-  ui.keysBtn.hidden = !caps.control || !live;
+  ui.keysBtn.hidden = !caps.control || !live || androidHost();
+  for (const btn of [ui.backBtn, ui.homeBtn, ui.recentsBtn]) btn.hidden = !caps.control || !live || !androidHost();
   ui.clipBtn.hidden = !caps.clipboard || !live;
   ui.clipBtn.classList.toggle('active', st.clipboard);
   ui.fileBtn.hidden = !caps.files || !live;
@@ -656,6 +666,13 @@ function attachInput() {
 
   const onKey = (down) => (e) => {
     if (!canControl() || isTypingTarget(e.target)) return;
+    // A phone types characters, whatever its keyboard layout: send the text.
+    if (androidHost() && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (down) sendReliable([['t', e.key]]);
+      return;
+    }
     if (!KEYMAP[e.code]) return;
     e.preventDefault();
     e.stopPropagation();
