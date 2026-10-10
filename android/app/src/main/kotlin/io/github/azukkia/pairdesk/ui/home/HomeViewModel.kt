@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** The home screen: this phone's credentials, the partner form, recent partners. */
-class HomeViewModel(graph: AppGraph) : ViewModel() {
+class HomeViewModel(private val graph: AppGraph) : ViewModel() {
     private val network = graph.network
     private val settings = graph.settings
 
@@ -81,6 +81,8 @@ class HomeViewModel(graph: AppGraph) : ViewModel() {
 
     fun connect(kind: SessionKind) {
         passwordError = null
+        // Loads WebRTC (native library, codecs, EGL) while the handshake runs, off the UI thread.
+        graph.appScope.launch { graph.rtc.environment }
         connectFlow.start(
             ConnectRequest(
                 peerId = partnerId,

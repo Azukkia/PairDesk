@@ -51,7 +51,7 @@ object NetworkTexts {
     fun detail(status: NetworkStatus): UiText = when {
         status.error == "id-taken" -> UiText(R.string.status_id_taken)
         status.state == TransportState.ONLINE && status.kind == TransportKind.PUBLIC && status.relays != null ->
-            UiText(R.string.status_via_relays, listOf(status.relays))
+            UiText.plural(R.plurals.status_via_relays, status.relays)
         status.state == TransportState.ONLINE && status.kind == TransportKind.SERVER && status.serverUrl != null ->
             UiText(R.string.status_via_server, listOf(status.serverUrl))
         status.state == TransportState.ONLINE -> UiText(R.string.status_online_detail)
@@ -103,7 +103,7 @@ fun NetworkBadge(status: NetworkStatus, modifier: Modifier = Modifier) {
 
 /** The brand mark: the launcher icon's logo on the blue → violet gradient. */
 @Composable
-fun BrandMark(size: Dp = 32.dp, modifier: Modifier = Modifier) {
+fun BrandMark(modifier: Modifier = Modifier, size: Dp = 32.dp) {
     Box(
         modifier
             .size(size)

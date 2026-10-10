@@ -67,7 +67,7 @@ class ConnectErrorsTest {
     fun `network status texts`() {
         val online = NetworkStatus(TransportState.ONLINE, TransportKind.PUBLIC, relays = 3)
         assertEquals(UiText(R.string.status_online), NetworkTexts.label(online))
-        assertEquals(UiText(R.string.status_via_relays, listOf(3)), NetworkTexts.detail(online))
+        assertEquals(UiText(R.plurals.status_via_relays, listOf(3), quantity = 3), NetworkTexts.detail(online))
         val server = NetworkStatus(TransportState.ONLINE, TransportKind.SERVER, serverUrl = "wss://x/ws")
         assertEquals(UiText(R.string.status_via_server, listOf("wss://x/ws")), NetworkTexts.detail(server))
         val connecting = NetworkStatus(TransportState.CONNECTING, TransportKind.PUBLIC)

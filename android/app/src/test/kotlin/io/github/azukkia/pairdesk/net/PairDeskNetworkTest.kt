@@ -15,6 +15,7 @@ import io.github.azukkia.pairdesk.core.transport.MemoryBus
 import io.github.azukkia.pairdesk.core.transport.MemoryTransport
 import io.github.azukkia.pairdesk.core.transport.TransportState
 import io.github.azukkia.pairdesk.data.MemoryKeyValueStore
+import io.github.azukkia.pairdesk.data.PrsUpdate
 import io.github.azukkia.pairdesk.data.SettingsStore
 import io.github.azukkia.pairdesk.fakePrs
 import io.github.azukkia.pairdesk.waitUntil
@@ -24,10 +25,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.json.JsonObject
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -128,7 +129,7 @@ class PairDeskNetworkTest {
         assertEquals("offer", SessionMessages.descriptionOf(received)?.type)
 
         // The desktop ends it.
-        val ended = async { withTimeout(5_000) { network.sessionEnded.first { it.sid == session.sid } } }
+        val ended = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { network.sessionEnded.first { it.sid == session.sid } } }
         desk.close(session.sid, "closed")
         assertEquals(SessionEnd(session.sid, "closed", byPeer = true), ended.await())
         assertNull(network.incoming.value)
@@ -268,7 +269,7 @@ class PairDeskNetworkTest {
         assertEquals("control", hostSession.intro?.str("kind"))
 
         // Ending it tells the computer.
-        val closed = async { withTimeout(5_000) { host.events.first { it is SignalingEvent.Closed } as SignalingEvent.Closed } }
+        val closed = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { host.events.first { it is SignalingEvent.Closed } as SignalingEvent.Closed } }
         network.endOutgoing(outgoing.sid, "closed")
         assertEquals("closed", closed.await().reason)
         assertTrue(network.outgoingSessions.value.isEmpty())
@@ -299,7 +300,7 @@ class PairDeskNetworkTest {
     fun `a wrong remembered password is forgotten`() = runBlocking {
         online()
         desktopHost(password = "new-one")
-        settings.touchRecent(DESK, "Bureau", io.github.azukkia.pairdesk.data.PrsUpdate.Set(fakePrs("old-one", DESK)))
+        settings.touchRecent(DESK, "Bureau", PrsUpdate.Set(fakePrs("old-one", DESK)))
         val result = network.connect(ConnectRequest(DESK, null, false, SessionKind.CONTROL)) as ConnectResult.Failure
         assertEquals("auth", result.code)
         assertFalse(settings.recents.value.single().hasPassword)
@@ -327,7 +328,7 @@ class PairDeskNetworkTest {
     fun `camera sessions refused by an older computer`() = runBlocking {
         online()
         val host = desktopHost(echoKind = false)
-        val closed = async { withTimeout(5_000) { host.events.first { it is SignalingEvent.Closed } as SignalingEvent.Closed } }
+        val closed = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { host.events.first { it is SignalingEvent.Closed } as SignalingEvent.Closed } }
         val result = network.connect(ConnectRequest(DESK, "abc234", false, SessionKind.CAMERA)) as ConnectResult.Failure
         assertEquals("camera-unsupported", result.code)
         assertEquals("unsupported", closed.await().reason)
@@ -381,10 +382,4 @@ class PairDeskNetworkTest {
         assertTrue("stun:stun.l.google.com:19302" in urls)
         assertTrue("stun:stun.cloudflare.com:3478" in urls)
     }
-
-    private suspend fun <T> kotlinx.coroutines.flow.Flow<T>.first(predicate: (T) -> Boolean): T =
-        kotlinx.coroutines.flow.first(this, predicate)
-
-    @Suppress("unused")
-    private fun JsonObject.kind(): String? = str("kind")
 }

@@ -62,8 +62,9 @@ class ConnectFlow(
         job = scope.launch {
             val result = connect(request) { step ->
                 // Progress is reported from the signaling thread; ignore a stale attempt.
+                // Compare-and-set: a concurrent cancel or result always wins.
                 val current = _state.value
-                if (id == attempt && current is ConnectUiState.Running) _state.value = current.copy(step = step)
+                if (id == attempt && current is ConnectUiState.Running) _state.compareAndSet(current, current.copy(step = step))
             }
             if (id != attempt) {
                 // Cancelled meanwhile: a late success must not stay open.

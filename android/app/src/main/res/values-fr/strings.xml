@@ -17,7 +17,6 @@
     <string name="status_connecting_detail">Connexion au réseau PairDesk…</string>
     <string name="status_offline_detail">Hors ligne — vérifiez votre connexion Internet</string>
     <string name="status_id_taken">Cet ID est déjà utilisé par un autre appareil sur ce serveur.</string>
-    <string name="status_via_relays">Relais publics : %1$d connecté(s)</string>
     <string name="status_via_server">Serveur : %1$s</string>
 
     <!-- Accueil -->
@@ -40,7 +39,6 @@
     <string name="home_remember">Mémoriser le mot de passe</string>
     <string name="home_control">Contrôler</string>
     <string name="home_camera">Caméra</string>
-    <string name="home_control_desc">Contrôler cet ordinateur</string>
     <string name="home_camera_desc">Utiliser le téléphone comme webcam pour cet ordinateur</string>
     <string name="home_recents">Connexions récentes</string>
     <string name="home_no_recents">Aucune connexion récente pour le moment.</string>
@@ -89,7 +87,6 @@
     <string name="settings_permanent_change">Modifier</string>
     <string name="settings_permanent_new">Nouveau mot de passe</string>
     <string name="settings_permanent_confirm">Confirmez le mot de passe</string>
-    <string name="settings_permanent_too_short">Au moins %1$d caractères.</string>
     <string name="settings_permanent_mismatch">Les mots de passe ne correspondent pas.</string>
     <string name="settings_permanent_failed">Le mot de passe n\'a pas pu être enregistré de façon sécurisée.</string>
     <string name="settings_permanent_saving">Enregistrement…</string>
@@ -114,7 +111,6 @@
     <string name="session_viewer_title">%1$s</string>
     <string name="session_camera_title">Caméra → %1$s</string>
     <string name="session_negotiating">Établissement de la connexion…</string>
-    <string name="session_connected">Connecté</string>
     <string name="session_reconnecting">Connexion perdue, reconnexion…</string>
     <string name="session_failed">La connexion a échoué.</string>
     <string name="session_ended">Session terminée.</string>
@@ -138,4 +134,16 @@
     <string name="incoming_active">%1$s est connecté à ce téléphone.</string>
     <string name="incoming_unknown_name">Appareil inconnu</string>
     <string name="incoming_title_active">Session entrante</string>
+
+    <!-- Counted texts -->
+    <plurals name="status_via_relays">
+        <item quantity="one">Relais publics : %1$d connecté</item>
+        <item quantity="many">Relais publics : %1$d connectés</item>
+        <item quantity="other">Relais publics : %1$d connectés</item>
+    </plurals>
+    <plurals name="settings_permanent_too_short">
+        <item quantity="one">Au moins %1$d caractère.</item>
+        <item quantity="many">Au moins %1$d caractères.</item>
+        <item quantity="other">Au moins %1$d caractères.</item>
+    </plurals>
 </resources>

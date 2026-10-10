@@ -1,19 +1,34 @@
 package io.github.azukkia.pairdesk.ui
 
 import android.content.Context
-import androidx.annotation.StringRes
+import androidx.annotation.PluralsRes
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import io.github.azukkia.pairdesk.R
 import io.github.azukkia.pairdesk.net.ConnectStep
 
-/** A localized text resolved at display time (keeps ViewModels free of Context). */
-data class UiText(@param:StringRes val res: Int, val args: List<Any> = emptyList()) {
-    fun resolve(context: Context): String = context.getString(res, *args.toTypedArray())
+/**
+ * A localized text resolved at display time (keeps ViewModels free of
+ * Context): a string resource, or a plurals resource when [quantity] is set.
+ */
+data class UiText(val res: Int, val args: List<Any> = emptyList(), val quantity: Int? = null) {
+    fun resolve(context: Context): String =
+        if (quantity != null) {
+            context.resources.getQuantityString(res, quantity, *args.toTypedArray())
+        } else {
+            context.getString(res, *args.toTypedArray())
+        }
+
+    companion object {
+        /** A plurals resource for [quantity], formatted with [args]. */
+        fun plural(@PluralsRes res: Int, quantity: Int, args: List<Any> = listOf(quantity)) = UiText(res, args, quantity)
+    }
 }
 
 @Composable
-fun UiText.text(): String = stringResource(res, *args.toTypedArray())
+fun UiText.text(): String =
+    if (quantity != null) pluralStringResource(res, quantity, *args.toTypedArray()) else stringResource(res, *args.toTypedArray())
 
 /**
  * Friendly messages for the error codes of an outgoing connection

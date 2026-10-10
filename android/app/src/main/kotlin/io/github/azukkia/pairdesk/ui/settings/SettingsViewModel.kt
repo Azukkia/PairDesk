@@ -22,7 +22,7 @@ object PermanentPasswordRules {
     /** The error to show, or null when [password] / [confirmation] can be saved. */
     fun validate(password: String, confirmation: String): UiText? = when {
         Protocol.normalizePassword(password).length < Protocol.MIN_PERMANENT_PASSWORD_LENGTH ->
-            UiText(R.string.settings_permanent_too_short, listOf(Protocol.MIN_PERMANENT_PASSWORD_LENGTH))
+            UiText.plural(R.plurals.settings_permanent_too_short, Protocol.MIN_PERMANENT_PASSWORD_LENGTH)
         password != confirmation -> UiText(R.string.settings_permanent_mismatch)
         else -> null
     }
