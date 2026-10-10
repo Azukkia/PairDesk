@@ -162,4 +162,20 @@ class SettingsStoreTest {
         val seen = (1..20).map { s.regenerateTempPassword() }.toSet()
         assertNotEquals(1, seen.size)
     }
+
+    @Test
+    fun `viewer preferences are remembered`() {
+        val first = store()
+        assertEquals(ViewerPrefs(), first.viewer.value)
+        first.updateViewer { it.copy(inputMode = "direct", quality = "speed", clipboardSync = false, remoteLayout = "azerty", landscape = true) }
+        val second = store()
+        assertEquals("direct", second.viewer.value.inputMode)
+        assertEquals("speed", second.viewer.value.quality)
+        assertFalse(second.viewer.value.clipboardSync)
+        assertEquals("azerty", second.viewer.value.remoteLayout)
+        assertTrue(second.viewer.value.landscape)
+        // An unknown quality falls back to the default.
+        second.updateViewer { it.copy(quality = "ultra") }
+        assertEquals("balanced", store().viewer.value.quality)
+    }
 }
