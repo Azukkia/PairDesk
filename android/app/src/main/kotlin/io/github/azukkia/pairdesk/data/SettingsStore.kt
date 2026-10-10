@@ -35,6 +35,26 @@ data class AppSettings(
 )
 
 /**
+ * Preferences of the viewer (controlling a computer), remembered across
+ * sessions like the desktop's `viewerQuality` / `viewerClipboard`. Values are
+ * the wire names of the viewer types (InputMode, Quality, RemoteLayout).
+ */
+data class ViewerPrefs(
+    /** `direct` or `touchpad`; null until the user picks one (default depends on the screen size). */
+    val inputMode: String? = null,
+    /** `speed`, `balanced` or `quality`. */
+    val quality: String = "balanced",
+    /** Copy to the phone what the computer copies. */
+    val clipboardSync: Boolean = true,
+    /** Keyboard layout of the remote computer (`qwerty`, `azerty`, `qwertz`); null = guessed from the phone's language. */
+    val remoteLayout: String? = null,
+    /** Keep the viewer in landscape whatever the auto-rotate setting. */
+    val landscape: Boolean = false,
+    /** The notification permission was asked once already. */
+    val notificationsAsked: Boolean = false,
+)
+
+/**
  * Persistent identity and settings (src/main/settings.js of the desktop).
  *
  * The device ID (9 digits, first non-zero) and the device key are generated
@@ -67,6 +87,11 @@ class SettingsStore(
 
     private val _tempPassword: MutableStateFlow<String>
 
+    private val _viewer: MutableStateFlow<ViewerPrefs>
+
+    /** Viewer preferences. */
+    val viewer: StateFlow<ViewerPrefs>
+
     /** The temporary password shown to the user. */
     val tempPassword: StateFlow<String>
 
@@ -94,6 +119,8 @@ class SettingsStore(
         tempPassword = _tempPassword.asStateFlow()
         _settings = MutableStateFlow(load())
         settings = _settings.asStateFlow()
+        _viewer = MutableStateFlow(loadViewer())
+        viewer = _viewer.asStateFlow()
         _recents = MutableStateFlow(Recents.decode(kv.getString(K_RECENTS)))
         _publicRecents = MutableStateFlow(Recents.toPublic(_recents.value))
         recents = _publicRecents.asStateFlow()
@@ -107,6 +134,29 @@ class SettingsStore(
         allowControl = kv.getBoolean(K_ALLOW_CONTROL, true),
         hasPermanentPassword = kv.getString(K_PERMANENT_PRS) != null,
     )
+
+    private fun loadViewer() = ViewerPrefs(
+        inputMode = kv.getString(K_VIEWER_INPUT),
+        quality = kv.getString(K_VIEWER_QUALITY)?.takeIf { it in QUALITIES } ?: "balanced",
+        clipboardSync = kv.getBoolean(K_VIEWER_CLIPBOARD, true),
+        remoteLayout = kv.getString(K_REMOTE_LAYOUT),
+        landscape = kv.getBoolean(K_VIEWER_LANDSCAPE, false),
+        notificationsAsked = kv.getBoolean(K_NOTIFICATIONS_ASKED, false),
+    )
+
+    /** Changes the viewer preferences with [change] and stores them. */
+    fun updateViewer(change: (ViewerPrefs) -> ViewerPrefs) = synchronized(lock) {
+        val next = change(_viewer.value).let { p -> if (p.quality in QUALITIES) p else p.copy(quality = "balanced") }
+        kv.edit {
+            putString(K_VIEWER_INPUT, next.inputMode)
+            putString(K_VIEWER_QUALITY, next.quality)
+            putBoolean(K_VIEWER_CLIPBOARD, next.clipboardSync)
+            putString(K_REMOTE_LAYOUT, next.remoteLayout)
+            putBoolean(K_VIEWER_LANDSCAPE, next.landscape)
+            putBoolean(K_NOTIFICATIONS_ASKED, next.notificationsAsked)
+        }
+        _viewer.value = next
+    }
 
     /** The name announced to partners. */
     val displayName: String
@@ -238,5 +288,12 @@ class SettingsStore(
         private const val K_TEMP_PRS = "temp_prs"
         private const val K_PERMANENT_PRS = "permanent_prs"
         private const val K_RECENTS = "recents"
+        private const val K_VIEWER_INPUT = "viewer_input_mode"
+        private const val K_VIEWER_QUALITY = "viewer_quality"
+        private const val K_VIEWER_CLIPBOARD = "viewer_clipboard"
+        private const val K_REMOTE_LAYOUT = "viewer_remote_layout"
+        private const val K_VIEWER_LANDSCAPE = "viewer_landscape"
+        private const val K_NOTIFICATIONS_ASKED = "notifications_asked"
+        private val QUALITIES = setOf("speed", "balanced", "quality")
     }
 }

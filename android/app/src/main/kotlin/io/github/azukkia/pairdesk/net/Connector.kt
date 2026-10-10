@@ -39,6 +39,11 @@ data class ConnectRequest(
     val password: String?,
     val remember: Boolean,
     val kind: SessionKind,
+    /**
+     * The PRS of a session that just ended (reconnect button): used instead
+     * of [password], and the remembered password of this partner is left as is.
+     */
+    val prs: ByteArray? = null,
 )
 
 /** An established outgoing session. [prs] allows reconnecting without asking again. */
@@ -93,6 +98,7 @@ class Connector(
         if (peerId == myId) return ConnectResult.Failure("self")
         val password = request.password?.takeIf { Protocol.normalizePassword(it).isNotEmpty() }
         var fromSaved = false
+        val reused = request.prs
         try {
             onStep(ConnectStep.SEARCHING)
             if (!awaitOnline()) return ConnectResult.Failure("network")
@@ -100,7 +106,9 @@ class Connector(
             if (probe.version != Protocol.PROTOCOL_VERSION.toLong()) return ConnectResult.Failure("version")
 
             val prs: ByteArray
-            if (password != null) {
+            if (reused != null) {
+                prs = reused
+            } else if (password != null) {
                 onStep(ConnectStep.AUTHENTICATING) // deriving the PRS takes a moment
                 prs = derivePrs(password, peerId)
             } else {
@@ -126,7 +134,7 @@ class Connector(
                 peerId,
                 session.peerName,
                 when {
-                    fromSaved -> PrsUpdate.Keep
+                    fromSaved || reused != null -> PrsUpdate.Keep
                     request.remember -> PrsUpdate.Set(prs)
                     else -> PrsUpdate.Clear
                 },

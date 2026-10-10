@@ -67,6 +67,17 @@ class BackStack(initial: List<Screen> = listOf(Screen.Home)) {
     /** Removes [screen] wherever it is (e.g. a session that ended in the background). */
     fun remove(screen: Screen) = _screens.update { stack -> stack.filter { it != screen }.ifEmpty { listOf(Screen.Home) } }
 
+    /** Replaces [old] by [new] (e.g. a reconnected session), or shows [new] when [old] is gone. */
+    fun replace(old: Screen, new: Screen) = _screens.update { stack ->
+        val index = stack.indexOf(old)
+        val without = stack.filter { it != new }
+        if (index < 0) {
+            without + new
+        } else {
+            without.map { if (it == old) new else it }
+        }
+    }
+
     /** Back to the home screen. */
     fun popToHome() = _screens.update { listOf(Screen.Home) }
 }

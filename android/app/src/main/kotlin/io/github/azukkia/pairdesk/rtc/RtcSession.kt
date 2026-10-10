@@ -356,6 +356,13 @@ class RtcSession(
         guarded(Unit) { remoteVideo?.removeSink(sink) }
     }
 
+    /** Mutes or unmutes the partner's audio (played by the audio device module). */
+    fun setRemoteAudioEnabled(enabled: Boolean) {
+        guarded(Unit) {
+            for (t in _remoteTracks.value) if (t.kind == MediaStreamTrack.AUDIO_TRACK_KIND) runCatching { t.track.setEnabled(enabled) }
+        }
+    }
+
     private fun onRemoteTrack(track: MediaStreamTrack) {
         val kind = guarded(null) { track.kind() } ?: return
         log.info("[rtc] remote $kind track")
