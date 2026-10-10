@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Two overlapping screens and a pointer (assets/logo.svg of the desktop app),
+  drawn in the logo's 256-unit space and scaled into the adaptive icon's safe zone.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.36"
+        android:scaleY="0.36"
+        android:translateX="7.56"
+        android:translateY="7.38">
+        <!-- Back screen (outline). -->
+        <path
+            android:pathData="M65,58H143A15,15 0,0 1,158 73V121A15,15 0,0 1,143 136H65A15,15 0,0 1,50 121V73A15,15 0,0 1,65 58Z"
+            android:strokeColor="#99FFFFFF"
+            android:strokeWidth="12" />
+        <!-- Front screen and its stand. -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M113,102H193A15,15 0,0 1,208 117V167A15,15 0,0 1,193 182H113A15,15 0,0 1,98 167V117A15,15 0,0 1,113 102Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M139.5,190H166.5A5.5,5.5 0,0 1,166.5 201H139.5A5.5,5.5 0,0 1,139.5 190Z" />
+        <!-- Pointer. -->
+        <path
+            android:fillColor="#FF5360F5"
+            android:pathData="M136,117L136,163L148,151.5L157,172L167,167.5L158,147.5L174.5,147.5Z"
+            android:strokeColor="#FF5360F5"
+            android:strokeLineJoin="round"
+            android:strokeWidth="3" />
+    </group>
+</vector>

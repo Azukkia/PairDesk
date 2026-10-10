@@ -8,7 +8,7 @@ import io.github.azukkia.pairdesk.R
 import io.github.azukkia.pairdesk.net.ConnectStep
 
 /** A localized text resolved at display time (keeps ViewModels free of Context). */
-data class UiText(@StringRes val res: Int, val args: List<Any> = emptyList()) {
+data class UiText(@param:StringRes val res: Int, val args: List<Any> = emptyList()) {
     fun resolve(context: Context): String = context.getString(res, *args.toTypedArray())
 }
 

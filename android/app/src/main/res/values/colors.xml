@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand gradient of the desktop application (assets/logo.svg). -->
+    <color name="brand_blue">#FF3B82F6</color>
+    <color name="brand_violet">#FF6D4CF6</color>
+    <color name="window_background">#FFF4F6FB</color>
+</resources>

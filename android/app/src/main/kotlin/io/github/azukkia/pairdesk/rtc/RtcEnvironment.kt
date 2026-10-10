@@ -8,6 +8,10 @@ import org.webrtc.EglBase
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.audio.JavaAudioDeviceModule
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Process-wide WebRTC state: one [PeerConnectionFactory] and one shared
@@ -15,6 +19,15 @@ import org.webrtc.audio.JavaAudioDeviceModule
  * Created on first use, kept for the life of the process.
  */
 class RtcEnvironment private constructor(context: Context) {
+    /**
+     * The thread on which [RtcSession]s run their negotiation and dispose their
+     * peer connections. Blocking org.webrtc calls (close, dispose) must never
+     * run on WebRTC's own signaling thread, where observers are called.
+     */
+    val executor: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "pairdesk-rtc").apply { isDaemon = true } }
+
+    val dispatcher: CoroutineDispatcher = executor.asCoroutineDispatcher()
+
     val eglBase: EglBase = EglBase.create()
 
     val eglContext: EglBase.Context get() = eglBase.eglBaseContext
