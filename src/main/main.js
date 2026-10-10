@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  app, ClipboardItem, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, protocol, safeStorage, session, shell,
+  app, ClipboardItem, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, safeStorage, session, shell,
 } from 'electron';
 import { log, initLogFile } from './log.js';
 import { loadConfig } from './config.js';
@@ -332,7 +332,22 @@ async function main() {
   handle('app:open-external', ['main'], (_ctx, url) => {
     if (typeof url === 'string' && (url.startsWith(config.homepage) || url.startsWith('https://github.com/Azukkia/PairDesk'))) shell.openExternal(url);
   });
-  handle('app:android', ['main'], () => ({ url: config.androidApkUrl, qr: qrRows(config.androidApkUrl) }));
+  // The Android app is offered once a release carries it (the link points to
+  // the latest release's APK).
+  let apkAvailable = false;
+  handle('app:android', ['main'], async () => {
+    if (!apkAvailable) {
+      try {
+        // One byte: GitHub's file servers refuse HEAD requests.
+        const res = await net.fetch(config.androidApkUrl, { headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(8000) });
+        apkAvailable = res.ok;
+        res.body?.cancel().catch(() => {});
+      } catch {
+        apkAvailable = false;
+      }
+    }
+    return { url: config.androidApkUrl, qr: qrRows(config.androidApkUrl), available: apkAvailable };
+  });
   handle('app:open-logs', ['main'], () => shell.openPath(path.dirname(log.file || app.getPath('userData'))));
   handle('settings:update', ['main'], (_ctx, patch) => {
     settings.update(patch);

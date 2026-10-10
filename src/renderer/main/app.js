@@ -142,11 +142,7 @@ function qrSvg(rows, size = 116) {
 function PhoneCard() {
   const qrBox = h('div', { class: 'qr-box' });
   let url = '';
-  api.invoke('app:android').then((res) => {
-    url = res.url;
-    clear(qrBox, qrSvg(res.qr));
-  });
-  return h('section', { class: 'card phone-card', id: 'phone-card' },
+  const card = h('section', { class: 'card phone-card', id: 'phone-card', hidden: true },
     qrBox,
     h('div', { class: 'phone-text' },
       h('h3', null, icon('phone', 'sm'), t('home.phone.title')),
@@ -155,6 +151,13 @@ function PhoneCard() {
       h('div', { class: 'row' },
         h('button', { class: 'btn small', onclick: () => url && copy(url) }, icon('copy', 'sm'), t('home.phone.copy')),
         h('button', { class: 'btn small ghost', onclick: () => url && api.invoke('app:open-external', url) }, icon('download', 'sm'), t('home.phone.download')))));
+  // Shown once a release carries the APK.
+  api.invoke('app:android').then((res) => {
+    url = res.url;
+    clear(qrBox, qrSvg(res.qr));
+    card.hidden = !res.available;
+  }).catch(() => {});
+  return card;
 }
 
 function HomePage() {

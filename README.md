@@ -11,7 +11,7 @@
 | **Windows 10/11** | **[Télécharger PairDesk-Setup.exe](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe)** |
 | Linux (AppImage) | [PairDesk-x86_64.AppImage](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-x86_64.AppImage) |
 | Linux (Debian/Ubuntu) | [PairDesk-amd64.deb](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-amd64.deb) |
-| **Android 8+** (téléphone, tablette) | **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** — ou scannez le code QR affiché sur l'accueil de PairDesk pour PC |
+| **Android 8+** (téléphone, tablette) | *Bientôt (version 1.2.1)* : [PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk), ou le code QR qui apparaîtra alors sur l'accueil de PairDesk pour PC |
 
 Ces liens sont permanents : ils pointent toujours vers la dernière version publiée. Toutes les versions restent disponibles sur la page [Releases](https://github.com/Azukkia/PairDesk/releases).
 
@@ -48,6 +48,8 @@ Ces liens sont permanents : ils pointent toujours vers la dernière version publ
 Les connexions récentes apparaissent sur l'accueil et dans **Récents** ; cocher « Mémoriser le mot de passe » permet de se reconnecter en un clic. Un lien `pairdesk://123456789` ouvre directement une connexion.
 
 ## Sur votre téléphone Android
+
+> L'application Android arrive avec la version 1.2.1. PairDesk pour PC 1.2.0 est déjà prêt à l'accueillir (sessions caméra, webcam « PairDesk Camera », téléphones contrôlés).
 
 1. Sur le téléphone, ouvrez **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** (ou scannez le code QR de l'accueil de PairDesk sur le PC), puis ouvrez le fichier téléchargé. Android demande d'autoriser l'installation depuis le navigateur : acceptez (l'application n'est pas sur le Play Store).
 2. L'application a, elle aussi, un **ID** et un **mot de passe**.
