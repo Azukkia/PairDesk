@@ -382,9 +382,12 @@ async function scenario(host, ctrl) {
   // in a window of the host computer that accepts file drops.
   {
     const zone = { x: work.x + 120, y: work.y + 120, width: 320, height: 220 };
+    // The main window was made topmost above: out of the way.
+    await setVisible(host.app, '/main/', false);
     await host.app.evaluate(({ BrowserWindow }, bounds) => {
       const win = new BrowserWindow({ ...bounds, frame: false, alwaysOnTop: true, show: true, title: 'drop-zone' });
       win.setAlwaysOnTop(true, 'floating');
+      win.moveTop();
       const html = '<body style="margin:0;background:#2e7d32;height:100vh" ondragover="event.preventDefault()" '
         + 'ondrop="event.preventDefault();document.title=\'dropped:\'+[...event.dataTransfer.files].map(function(f){return f.name}).join(\'|\')"></body>';
       win.loadURL(`data:text/html,${encodeURIComponent(html)}`);
@@ -408,6 +411,7 @@ async function scenario(host, ctrl) {
     }), { timeout: 20_000, message: 'file dropped in the host window under the drop point' });
     assert.equal(title, `dropped:${dropName}`);
     await host.app.evaluate(() => globalThis.__dropZone.destroy());
+    await setVisible(host.app, '/main/', true);
   }
 
   // 5f. Files copied on the controller and pasted (Ctrl+V) in the viewer end up
