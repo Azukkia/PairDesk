@@ -29,6 +29,8 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
   let trackerPromise = null;
   let guardTimer = null;
   let blocked = null;
+  let dragging = null; // drop replay in progress: remote input waits
+
 
   const toRenderer = (msg) => {
     try {
@@ -148,7 +150,49 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
     }
   }
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /**
+   * Replays a drag and drop (see src/main/drops.js): press on the source
+   * window at `from`, move past the drag threshold, wait for the main process
+   * to start the native drag, then carry it to `to` and release.
+   */
+  async function drag({ from, to }) {
+    if (!session?.control || dragging) return { ok: false, reason: dragging ? 'busy' : 'control' };
+    let started;
+    dragging = { started: new Promise((r) => { started = r; }), resolve: () => started(true) };
+    try {
+      injector.releaseAll();
+      injector.moveTo(from.x, from.y);
+      await sleep(80);
+      injector.button(0, true);
+      const dir = to.x >= from.x ? 1 : -1;
+      for (let i = 1; i <= 8; i++) {
+        injector.moveTo(from.x + dir * i * 3, from.y);
+        await sleep(16);
+      }
+      const ok = await Promise.race([dragging.started, sleep(2000).then(() => false)]);
+      if (ok) {
+        // Glide to the target so it gets drag-enter/over events, then drop.
+        const sx = from.x + dir * 24;
+        for (let i = 1; i <= 15; i++) {
+          injector.moveTo(Math.round(sx + ((to.x - sx) * i) / 15), Math.round(from.y + ((to.y - from.y) * i) / 15));
+          await sleep(20);
+        }
+        await sleep(200);
+        injector.moveTo(to.x, to.y);
+        await sleep(120);
+      }
+      injector.button(0, false);
+      await sleep(100);
+      return { ok };
+    } finally {
+      dragging = null;
+    }
+  }
+
   function onRendererMessage(msg) {
+    if (dragging) return; // the drop replay owns the mouse for a moment
     if (Array.isArray(msg)) inject(msg);
     else if (msg?.type === 'cursor-resync') tracker?.resync();
     else if (msg?.type === 'wake' && session) wake();
@@ -199,7 +243,16 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
           return;
         }
         case 'input':
-          if (session && msg.id === session.id) inject(msg.events);
+          if (session && msg.id === session.id && !dragging) inject(msg.events);
+          return;
+        case 'drag':
+          drag(msg).then(
+            (result) => toMain({ type: 'reply', rid: msg.rid, value: result }),
+            (err) => toMain({ type: 'reply', rid: msg.rid, value: { ok: false, reason: err.message } }),
+          );
+          return;
+        case 'drag-started':
+          dragging?.resolve();
           return;
         case 'release':
           injector.releaseAll();

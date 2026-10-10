@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  app, Menu, Notification, clipboard, dialog, ipcMain, nativeTheme, protocol, safeStorage, session, shell,
+  app, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, protocol, safeStorage, session, shell,
 } from 'electron';
 import { log, initLogFile } from './log.js';
 import { loadConfig } from './config.js';
@@ -16,6 +16,7 @@ import { createTray } from './tray.js';
 import { Updater } from './updater.js';
 import { ClipboardSync } from './clipboard.js';
 import { FileReceiver } from './files.js';
+import { DropManager } from './drops.js';
 import { InputService } from './input-service.js';
 import { clipboardSequence } from './clipboard-native.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
@@ -83,6 +84,7 @@ function registerAppProtocol() {
     main: path.join(appPath, 'src', 'renderer', 'main'),
     viewer: path.join(appPath, 'src', 'renderer', 'viewer'),
     host: path.join(appPath, 'src', 'renderer', 'host'),
+    drop: path.join(appPath, 'src', 'renderer', 'drop'),
     common: path.join(appPath, 'src', 'renderer', 'common'),
     shared: path.join(appPath, 'src', 'shared'),
     assets: path.join(appPath, 'assets'),
@@ -162,6 +164,15 @@ async function main() {
     // The translator changes with the language setting.
     t: (key, vars) => t(key, vars),
   });
+
+  const drops = new DropManager({
+    target: () => sessions.dropTarget(),
+    windows,
+    input,
+    fallbackDir: downloadsDir,
+    log,
+  });
+  drops.cleanup();
 
   const updater = new Updater({ log, isPackaged: app.isPackaged, currentVersion: app.getVersion() });
 
@@ -386,10 +397,15 @@ async function main() {
   on('clipboard:remote', SESSION, (ctx, text) => sessions.remoteClipboard(ctx, String(text)));
 
   // File transfers (received files go to Downloads/PairDesk)
-  handle('files:begin', SESSION, (ctx, { name, size } = {}) => {
+  handle('files:begin', SESSION, (ctx, { name, size, drop } = {}) => {
     if (!sessions.canReceiveFiles(ctx)) return { ok: false, error: 'disabled' };
     try {
-      return { ok: true, ...files.begin(ctx.sid, String(name), Number(size)) };
+      // Dropped at a position of this screen: received in a staging folder,
+      // then dropped there for real (drops.js).
+      const staged = ctx.kind === 'host' ? drops.accept(ctx.sid, drop) : null;
+      const res = files.begin(ctx.sid, String(name), Number(size), staged ? { directory: staged.directory } : {});
+      if (staged) drops.track(res.token, staged.id);
+      return { ok: true, ...res, dropped: Boolean(staged) };
     } catch (err) {
       return { ok: false, error: err.message };
     }
@@ -397,12 +413,21 @@ async function main() {
   on('files:chunk', SESSION, (ctx, token, chunk) => files.write(ctx.sid, String(token), chunk));
   handle('files:end', SESSION, async (ctx, token) => {
     try {
-      return { ok: true, path: await files.end(ctx.sid, String(token)) };
+      const file = await files.end(ctx.sid, String(token));
+      drops.fileDone(String(token), file);
+      return { ok: true, path: file };
     } catch (err) {
+      drops.fileDone(String(token), null);
       return { ok: false, error: err.message };
     }
   });
-  on('files:abort', SESSION, (ctx, token) => files.abort(ctx.sid, String(token)));
+  on('files:abort', SESSION, (ctx, token) => {
+    files.abort(ctx.sid, String(token));
+    drops.fileDone(String(token), null);
+  });
+  // "dragstart" in the drop source window (checked against the window it opened).
+  const dragIcon = nativeImage.createFromPath(path.join(appPath, 'assets', 'icon.png')).resize({ width: 32, height: 32 });
+  ipcMain.on('drop:start', (event) => drops.onDragStart(event.sender, dragIcon));
   handle('files:show', [...SESSION, 'main'], (_ctx, file) => {
     const target = path.resolve(String(file));
     if (target.startsWith(downloadsDir() + path.sep)) shell.showItemInFolder(target);

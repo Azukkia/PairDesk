@@ -83,7 +83,7 @@ function buildUI() {
   ui.chat = h('aside', { class: 'chat-panel', hidden: true },
     h('header', null, t('chat.title'), h('button', { class: 'icon-btn', onclick: () => toggleChat(false) }, icon('x', 'sm'))),
     chat.list, chat.form);
-  ui.drop = h('div', { class: 'drop-hint', hidden: true }, t('viewer.dropHint'));
+  ui.drop = h('div', { class: 'drop-hint', hidden: true }, h('span', null, t('viewer.dropHint')));
   ui.hotzone = h('div', { class: 'hotzone' });
 
   clear(app, ui.topbar, ui.stage, ui.chat, ui.audio);
@@ -468,13 +468,17 @@ function toggleChat(open = !st.chatOpen) {
   refreshToolbar();
 }
 
-function sendFiles(files) {
+/** `at`: normalized point of the remote screen where the files were dropped. */
+function sendFiles(files, at = null) {
   if (!rtc || st.ended || !st.connected) return;
   if (!init.caps.files) {
     toast(t('viewer.filesDisabled'), { type: 'error' });
     return;
   }
-  for (const file of files) rtc.sendFile(file, transfers.add(file.name, file.size, 'out'));
+  const drop = at && canControl() && files.length <= 100
+    ? { id: Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join(''), x: at[0], y: at[1], n: files.length }
+    : null;
+  for (const file of files) rtc.sendFile(file, transfers.add(file.name, file.size, 'out'), { drop });
 }
 
 // ───────────────────────────── input capture ─────────────────────────────
@@ -642,13 +646,23 @@ function attachDragDrop() {
       ui.drop.hidden = true;
     }
   });
-  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    // The remote pointer follows, to show where the files will land.
+    if (canControl() && ui.stage.contains(e.target)) {
+      const p = mapPoint(e);
+      if (p) sendMove(p[0], p[1]);
+    }
+  });
   window.addEventListener('drop', (e) => {
     e.preventDefault();
     depth = 0;
     ui.drop.hidden = true;
     const files = [...(e.dataTransfer?.files || [])];
-    if (files.length) sendFiles(files);
+    // Dropped on the remote screen: the files land at that spot over there
+    // (desktop, folder, application); elsewhere they go to its Downloads.
+    const at = ui.stage.contains(e.target) ? mapPoint(e) : null;
+    if (files.length) sendFiles(files, at);
   });
 }
 

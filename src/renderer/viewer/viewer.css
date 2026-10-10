@@ -50,7 +50,9 @@ body.viewer .transfers { bottom: 16px; left: 16px; }
   padding: 10px 14px; border-radius: var(--radius); background: var(--warning); color: #fff; font-size: 13px; line-height: 1.4;
   box-shadow: var(--shadow-lg); pointer-events: none;
 }
-.drop-hint { position: fixed; inset: 60px 16px 16px; border: 2px dashed var(--accent); border-radius: var(--radius-lg); background: rgba(47, 98, 245, 0.18); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; font-weight: 600; z-index: 30; pointer-events: none; }
+/* Light frame while files are dragged over: the remote screen must stay visible to aim. */
+.drop-hint { position: fixed; inset: 60px 16px 16px; border: 2px dashed var(--accent); border-radius: var(--radius-lg); background: rgba(47, 98, 245, 0.05); display: flex; align-items: flex-start; justify-content: center; color: #fff; font-size: 14px; font-weight: 600; z-index: 30; pointer-events: none; }
+.drop-hint span { margin-top: 12px; padding: 6px 12px; border-radius: 999px; background: var(--accent); box-shadow: var(--shadow); }
 
 /* Full screen: the toolbar floats and hides itself. */
 body.fullscreen .topbar {

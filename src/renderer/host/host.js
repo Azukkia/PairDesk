@@ -326,9 +326,10 @@ async function startHosting() {
   }
 
   rtc = new RtcSession({ role: 'host', iceServers: init.iceServers });
-  rtc.acceptFile = async ({ name, size }) => {
+  rtc.acceptFile = async ({ name, size, drop }) => {
     if (!perms.files) return { ok: false };
-    const res = await api.invoke('files:begin', { name, size });
+    // With a drop position: delivered where the controller dropped it.
+    const res = await api.invoke('files:begin', { name, size, drop: perms.control ? drop : undefined });
     if (!res.ok) return res;
     return { ...res, view: transfers.add(res.name, size, 'in') };
   };

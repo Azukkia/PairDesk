@@ -161,12 +161,40 @@ export class Windows {
     win.setBounds({ x: area.x + area.width - HOST_WIDTH - 16, y: area.y + area.height - h - 16, width: HOST_WIDTH, height: h });
   }
 
+  /** Tiny always-on-top window centred on `point` (DIP): source of a replayed file drop. */
+  createDropSource(point) {
+    const size = 24;
+    const win = this.#create('drop', {
+      x: Math.round(point.x - size / 2),
+      y: Math.round(point.y - size / 2),
+      width: size,
+      height: size,
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      focusable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      title: 'PairDesk',
+    });
+    win.setAlwaysOnTop(true, 'screen-saver');
+    return win;
+  }
+
   collapseHost(win, collapsed) {
     if (!win || win.isDestroyed()) return;
     if (collapsed) {
       if (!expandedBounds.has(win)) expandedBounds.set(win, win.getBounds());
       const area = screen.getDisplayMatching(win.getBounds()).workArea;
-      win.setBounds({ x: area.x + area.width - TAB_WIDTH, y: area.y + area.height - TAB_HEIGHT - 24, width: TAB_WIDTH, height: TAB_HEIGHT });
+      const right = area.x + area.width;
+      win.setBounds({ x: right - TAB_WIDTH, y: area.y + area.height - TAB_HEIGHT - 24, width: TAB_WIDTH, height: TAB_HEIGHT });
+      // Windows may enforce a slightly larger minimum width: keep the tab flush with the edge.
+      const b = win.getBounds();
+      if (b.x + b.width !== right) win.setPosition(right - b.width, b.y);
       return;
     }
     const previous = expandedBounds.get(win);

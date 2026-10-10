@@ -200,10 +200,14 @@ Both ways:
 * `{type:'chat', text}` (≤ 2000 chars), `{type:'clipboard', text}`.
 * `{type:'ping', t}` → `{type:'pong', t}` (round trip for file pacing, 1.1+).
 * `{type:'bye'}`.
-* Files: `{type:'file-offer', fid, name, size}` → `{type:'file-accept'|'file-reject', fid}`;
+* Files: `{type:'file-offer', fid, name, size, drop?}` → `{type:'file-accept'|'file-reject', fid}`;
   the sender then opens data channel `file:<fid>` and sends the content in
   chunks (≤ 16 KiB), the receiver answers `{type:'file-done', fid, ok}` once
   `size` bytes arrived; either side may send `{type:'file-cancel', fid}`.
+  `drop` (1.2+, controller → host): `{id, x, y, n}` when the files were dropped
+  at a point of the remote screen (`x`, `y` normalized like input events, `n`
+  files share the same `id`): once the `n` files arrived, a 1.2 host replays a
+  real drag and drop of them at that point; others save them in Downloads.
 
 Unknown messages and fields must be ignored.
 

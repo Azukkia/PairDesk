@@ -157,17 +157,31 @@ export class InputService extends EventEmitter {
     this.#post({ type: 'release' });
   }
 
-  #query(what) {
+  #request(msg, timeoutMs = 3000) {
     if (!this.child) return Promise.resolve(null);
     const rid = this.nextRid++;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.queries.delete(rid);
         resolve(null);
-      }, 3000);
+      }, timeoutMs);
       this.queries.set(rid, { resolve, timer });
-      this.#post({ type: 'query', rid, what });
+      this.#post({ ...msg, rid });
     });
+  }
+
+  #query(what) {
+    return this.#request({ type: 'query', what });
+  }
+
+  /** Replays a drag from `from` to `to` (physical pixels); see drops.js. */
+  drag({ from, to }) {
+    return this.#request({ type: 'drag', from, to }, 15_000);
+  }
+
+  /** The native drag started: the helper may carry it to the target. */
+  dragStarted() {
+    this.#post({ type: 'drag-started' });
   }
 
   async cursorPos() {

@@ -342,6 +342,25 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  /**
+   * Where files dropped by the controller can be replayed (drops.js): the
+   * shared display of the incoming session, when remote control and file
+   * transfers are allowed. Null otherwise.
+   */
+  dropTarget() {
+    const host = this.host;
+    if (!host || host.state !== 'active' || !host.perms.control || !host.perms.files) return null;
+    if (!this.settings.get('allowControl') || !this.settings.get('allowFileTransfer')) return null;
+    const display = screen.getAllDisplays().find((d) => String(d.id) === String(host.displayId)) || screen.getPrimaryDisplay();
+    const scale = display.scaleFactor || 1;
+    return {
+      sid: host.sid,
+      rect: this.#displayRect(host.displayId),
+      scale,
+      toDip: (p) => (process.platform === 'win32' ? screen.screenToDipPoint(p) : { x: p.x / scale, y: p.y / scale }),
+    };
+  }
+
   /** Input that reached the main process (host window without its port yet). */
   injectInput(ctx, events) {
     if (ctx !== this.host || ctx.state !== 'active' || !Array.isArray(events)) return;
