@@ -14,7 +14,7 @@ const INVOKE = new Set([
   'files:begin', 'files:end', 'files:show',
   'clipboard:current', 'clipboard:list', 'clipboard:read', 'clipboard:expect',
   'camera:attach', 'camera:end',
-  'e2e:cursor',
+  'e2e:cursor', 'e2e:vcam',
 ]);
 
 const SEND = new Set([
@@ -47,24 +47,11 @@ ipcRenderer.on('input:port', (event) => {
 });
 
 // Camera window only: a direct line to the camera helper process, which
-// hands the phone's frames to the "PairDesk Camera" virtual webcam.
-let cameraPort = null;
-let cameraFormat = null;
-const cameraListeners = new Set();
+// hands the phone's frames to the "PairDesk Camera" virtual webcam. The port
+// goes to the page (then to its frames worker) as a real MessagePort, so
+// frames never cross the context bridge.
 ipcRenderer.on('camera:port', (event, format) => {
-  try {
-    cameraPort?.close();
-  } catch {
-    /* ignore */
-  }
-  cameraPort = event.ports[0] || null;
-  cameraFormat = format || null;
-  if (!cameraPort) return;
-  cameraPort.onmessage = (e) => {
-    for (const cb of cameraListeners) cb(e.data);
-  };
-  cameraPort.start();
-  for (const cb of cameraListeners) cb({ type: 'linked', ...cameraFormat });
+  if (event.ports[0]) window.postMessage({ type: 'pairdesk:camera-port', format }, '*', [event.ports[0]]);
 });
 
 contextBridge.exposeInMainWorld('pairdesk', {
@@ -92,22 +79,6 @@ contextBridge.exposeInMainWorld('pairdesk', {
     on(callback) {
       inputListeners.add(callback);
       return () => inputListeners.delete(callback);
-    },
-  },
-  cameraPort: {
-    /** { width, height } expected by the virtual webcam, or null when not linked. */
-    format() {
-      return cameraPort ? cameraFormat : null;
-    },
-    /** Sends one RGBA frame (its buffer is transferred). */
-    sendFrame(width, height, data) {
-      if (!cameraPort) return false;
-      cameraPort.postMessage({ width, height, data }, [data]);
-      return true;
-    },
-    on(callback) {
-      cameraListeners.add(callback);
-      return () => cameraListeners.delete(callback);
     },
   },
   pathForFile(file) {

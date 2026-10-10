@@ -474,6 +474,7 @@ async function main() {
 
   if (E2E) {
     handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...(await input.cursorPos()), shape: await input.cursorDebug() }));
+    handle('e2e:vcam', ['main'], () => virtualCamera.stats());
   }
 
   // ───────────── start ─────────────

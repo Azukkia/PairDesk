@@ -263,5 +263,9 @@ A phone streams its camera to a computer, which exposes it as a webcam.
   video m-line (no screen capture) and the `control` channel. The phone answers
   with its camera track (`sendonly`), 1280×720 at 30 fps when possible.
 * Control messages: phone → computer `{type:'camera-info', width, height, facing}`
-  (`facing` = `front | back`); computer → phone `{type:'camera-switch'}` asks
-  for the other camera. Either side ends with `bye`.
+  (`facing` = `front | back`), sent when its control channel opens, after a
+  switch, and in answer to every `{type:'camera-hello'}` (computer → phone,
+  sent when the computer's side of the channel opens: a message sent by the
+  phone at that very moment can be lost); computer → phone
+  `{type:'camera-switch'}` asks for the other camera. Either side ends with
+  `bye`.

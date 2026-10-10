@@ -25,11 +25,13 @@ export class VirtualCamera {
       || (packaged
         ? path.join(resourcesPath, 'camera', 'PairDeskCamera.dll')
         : path.join(appPath, 'native', 'bin', 'win32-x64', 'PairDeskCamera.dll'));
+    // End-to-end tests on Linux: the whole path without the DLL.
+    this.fake = process.env.PAIRDESK_E2E === '1' && process.env.PAIRDESK_FAKE_VCAM === '1';
     this.dir = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'PairDesk', 'camera');
     this.log = log;
     this.child = null;
     this.starting = null;
-    this.state = { supported: process.platform === 'win32' && fs.existsSync(this.source), active: false, error: null };
+    this.state = { supported: this.fake || (process.platform === 'win32' && fs.existsSync(this.source)), active: false, error: null };
   }
 
   /** What the camera window shows: { supported, active, error, name }. */
@@ -50,7 +52,7 @@ export class VirtualCamera {
   }
 
   async #start() {
-    const dll = await ensureRegistered({ source: this.source, dir: this.dir, log: this.log });
+    const dll = this.fake ? null : await ensureRegistered({ source: this.source, dir: this.dir, log: this.log });
     const child = utilityProcess.fork(this.entry, [], { serviceName: 'PairDesk Camera', stdio: 'pipe' });
     this.child = child;
     child.stdout?.on('data', (d) => this.log.info(`[camera-helper] ${String(d).trim()}`));
@@ -59,7 +61,8 @@ export class VirtualCamera {
       const timer = setTimeout(() => reject(new Error('helper timeout')), 15_000);
       child.on('message', (msg) => {
         if (msg?.type === 'log') this.log[msg.level === 'error' ? 'error' : msg.level === 'warn' ? 'warn' : 'info'](msg.msg);
-        else if (msg?.type === 'ready') child.postMessage({ type: 'start', dll, width: FRAME_WIDTH, height: FRAME_HEIGHT });
+        else if (msg?.type === 'ready') child.postMessage({ type: 'start', dll, fake: this.fake, width: FRAME_WIDTH, height: FRAME_HEIGHT });
+        else if (msg?.type === 'stats') this.statsWaiter?.(msg);
         else if (msg?.type === 'started') {
           clearTimeout(timer);
           if (msg.ok) resolve();
@@ -88,6 +91,20 @@ export class VirtualCamera {
     this.child.postMessage({ type: 'port' }, [port1]);
     webContents.postMessage('camera:port', { width: FRAME_WIDTH, height: FRAME_HEIGHT }, [port2]);
     return true;
+  }
+
+  /** Frames handed to the webcam so far: { frames, rejected, center: [r, g, b] }. */
+  stats() {
+    if (!this.child) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 3000);
+      this.statsWaiter = (msg) => {
+        clearTimeout(timer);
+        this.statsWaiter = null;
+        resolve({ frames: msg.frames, rejected: msg.rejected, center: msg.center, ms: msg.ms });
+      };
+      this.child.postMessage({ type: 'stats' });
+    });
   }
 
   #kill() {

@@ -20,9 +20,19 @@ let bgr = null;
 let port = null;
 let idleTimer = null;
 let lastFrameAt = 0;
+const stats = { frames: 0, rejected: 0, center: null, ms: 0 }; // what reached the webcam (logs, tests); ms: average handling time
 
-function start({ dll, width, height }) {
+// End-to-end tests without the DLL (Linux): the same path, minus the webcam.
+const fakeApi = () => ({
+  create: () => ({}),
+  remove() {},
+  send() {},
+  connected: () => true,
+});
+
+function start({ dll, width, height, fake }) {
   if (camera) return { ok: true };
+  if (fake) api ??= fakeApi();
   api ??= (() => {
     const lib = koffi.load(dll);
     return {
@@ -59,12 +69,20 @@ function stop() {
 }
 
 function onFrame(msg) {
-  if (!camera || !msg || msg.width !== size.width || msg.height !== size.height) return;
-  const rgba = new Uint8Array(msg.data);
-  if (rgba.length < size.width * size.height * 4) return;
+  const data = msg?.data;
+  const rgba = data instanceof ArrayBuffer ? new Uint8Array(data) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
+  if (!camera || !rgba || msg.width !== size.width || msg.height !== size.height || rgba.length < size.width * size.height * 4) {
+    if (stats.rejected++ === 0) log('warn', `[camera] unexpected frame: ${msg?.width}x${msg?.height}, ${Object.prototype.toString.call(data)} ${rgba?.length}`);
+    return;
+  }
+  const t0 = performance.now();
   rgbaToBgr(rgba, bgr);
   api.send(camera, bgr);
+  stats.ms = stats.ms * 0.9 + (performance.now() - t0) * 0.1;
   lastFrameAt = Date.now();
+  if (stats.frames++ === 0) log('info', '[camera] first frame from the phone sent to the webcam');
+  const c = ((size.height >> 1) * size.width + (size.width >> 1)) * 3;
+  stats.center = [bgr[c + 2], bgr[c + 1], bgr[c]];
 }
 
 parent.on('message', (e) => {
@@ -94,6 +112,9 @@ parent.on('message', (e) => {
         port?.postMessage({ type: 'ack', connected: Boolean(camera && api.connected(camera)) });
       });
       port.start();
+      break;
+    case 'stats':
+      parent.postMessage({ type: 'stats', ...stats });
       break;
     case 'stop':
       stop();

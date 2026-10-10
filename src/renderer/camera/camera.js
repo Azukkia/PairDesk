@@ -2,15 +2,15 @@
 // session, docs/PROTOCOL.md 6). The picture is shown here and, on Windows,
 // handed frame by frame to the "PairDesk Camera" virtual webcam through
 // the camera helper process. Frames are read from the track itself, not
-// from what is on screen: the webcam keeps working while this window is
-// minimized during a video call.
+// from what is on screen (the webcam keeps working while this window is
+// minimized during a video call), and processed by a worker
+// (frames-worker.js).
 
 import { api, h, icon, t, setLanguage } from '../common/ui.js';
 import { RtcSession } from '../common/rtc.js';
 import { formatId } from '../shared/protocol.js';
 
 const app = document.getElementById('app');
-const port = window.pairdesk.cameraPort;
 const ui = {};
 const timers = {};
 const st = {
@@ -23,15 +23,25 @@ const st = {
 let init = null;
 let rtc = null;
 let track = null;
-let inflight = 0; // when the frame being handled by the camera helper was sent
+let worker = null;
 
-port.on((msg) => {
-  if (msg?.type !== 'ack') return;
-  inflight = 0;
-  if (st.inUse !== Boolean(msg.connected)) {
-    st.inUse = Boolean(msg.connected);
+function frameWorker() {
+  if (worker) return worker;
+  worker = new Worker(new URL('./frames-worker.js', import.meta.url));
+  worker.onmessage = (e) => {
+    if (e.data?.type !== 'ack' || st.inUse === e.data.connected) return;
+    st.inUse = e.data.connected;
     renderVcam();
-  }
+  };
+  worker.postMessage({ type: 'fill', fill: st.fill });
+  return worker;
+}
+
+// The line to the camera helper, handed over by the preload script: it goes
+// to the worker.
+window.addEventListener('message', (e) => {
+  if (e.source !== window || e.data?.type !== 'pairdesk:camera-port' || !e.ports[0]) return;
+  frameWorker().postMessage({ type: 'port', port: e.ports[0], format: e.data.format }, [e.ports[0]]);
 });
 
 function readPref(key) {
@@ -85,6 +95,7 @@ function setStatus(text, kind = '') {
 function setFill(fill) {
   st.fill = fill;
   writePref('fill', fill ? '1' : '0');
+  worker?.postMessage({ type: 'fill', fill });
   ui.fillBtn.replaceChildren(icon('fit', 'sm'), fill ? t('camera.fill') : t('camera.fit'));
   ui.fillBtn.title = t('camera.framing');
 }
@@ -128,6 +139,9 @@ function start() {
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('control-open', () => {
     ui.switchBtn.disabled = false;
+    // The phone answers with camera-info (its own one, sent as soon as its
+    // side opened, may arrive before this side is open).
+    rtc.sendControl({ type: 'camera-hello' });
   });
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
   ui.video.addEventListener('loadeddata', () => {
@@ -184,63 +198,33 @@ function end() {
 // ───────────────────────────── virtual webcam ─────────────────────────────
 
 /**
- * Reads the frames of `videoTrack` and sends them, scaled to the webcam
- * size (fit or fill), to the camera helper. One frame in flight at a time:
- * when the helper is busy, frames are skipped rather than queued.
+ * Hands the frames of `videoTrack` to the worker, which scales them and
+ * sends them to the camera helper (one in flight: frames are skipped rather
+ * than queued when it is busy).
  */
 async function feedWebcam(videoTrack) {
   if (!st.attached) {
     st.attached = true;
+    frameWorker();
     st.vcam = await api.invoke('camera:attach');
     renderVcam();
   }
   if (!st.vcam?.active) return;
-  let canvas = null;
-  let ctx = null;
-  const push = (source, sw, sh) => {
-    const fmt = port.format();
-    if (!fmt || !sw || !sh) return;
-    // A lost acknowledgement must not stop the webcam for good.
-    if (inflight && performance.now() - inflight < 1000) return;
-    if (!canvas || canvas.width !== fmt.width || canvas.height !== fmt.height) {
-      canvas = new OffscreenCanvas(fmt.width, fmt.height);
-      ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
-    }
-    const scale = st.fill ? Math.max(fmt.width / sw, fmt.height / sh) : Math.min(fmt.width / sw, fmt.height / sh);
-    const dw = sw * scale;
-    const dh = sh * scale;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, fmt.width, fmt.height);
-    ctx.drawImage(source, (fmt.width - dw) / 2, (fmt.height - dh) / 2, dw, dh);
-    const data = ctx.getImageData(0, 0, fmt.width, fmt.height).data.buffer;
-    if (port.sendFrame(fmt.width, fmt.height, data)) inflight = performance.now();
-  };
-
   if (typeof MediaStreamTrackProcessor === 'function') {
-    const reader = new MediaStreamTrackProcessor({ track: videoTrack }).readable.getReader();
-    for (;;) {
-      const { value: frame, done } = await reader.read().catch(() => ({ done: true }));
-      if (done) break;
-      if (videoTrack !== track) {
-        frame.close();
-        reader.cancel().catch(() => {});
-        break;
-      }
-      try {
-        push(frame, frame.displayWidth, frame.displayHeight);
-      } catch (err) {
-        console.warn(`[camera] frame: ${err.message}`);
-      } finally {
-        frame.close();
-      }
-    }
+    const { readable } = new MediaStreamTrackProcessor({ track: videoTrack });
+    frameWorker().postMessage({ type: 'frames', readable }, [readable]);
     return;
   }
   // Fallback: sample the video element 30 times a second.
   clearInterval(timers.sample);
-  timers.sample = setInterval(() => {
-    if (videoTrack.readyState === 'ended' || videoTrack !== track) clearInterval(timers.sample);
-    else push(ui.video, ui.video.videoWidth, ui.video.videoHeight);
+  timers.sample = setInterval(async () => {
+    if (videoTrack.readyState === 'ended' || videoTrack !== track) {
+      clearInterval(timers.sample);
+      return;
+    }
+    if (!ui.video.videoWidth) return;
+    const bitmap = await createImageBitmap(ui.video).catch(() => null);
+    if (bitmap) frameWorker().postMessage({ type: 'bitmap', bitmap }, [bitmap]);
   }, 33);
 }
 

@@ -38,7 +38,11 @@ pc.ondatachannel = ({ channel }) => {
   if (channel.label !== 'control') return;
   const info = () => channel.send(JSON.stringify({ type: 'camera-info', width: 640, height: 480, facing: 'back' }));
   if (channel.readyState === 'open') info(); else channel.onopen = info;
-  channel.onmessage = (m) => window.__in.push(JSON.parse(m.data));
+  channel.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    window.__in.push(msg);
+    if (msg.type === 'camera-hello') info();
+  };
 };
 window.__signal = async (data) => {
   if (data.description) {
@@ -69,7 +73,8 @@ async function startPhone(env) {
 
 test('camera session: a phone streams its camera to the computer', { timeout: 180_000 }, async (t) => {
   const net = await startSignaling();
-  const pc = await launch('pc', net.env);
+  // Without the Windows webcam DLL, a fake one still checks the frames' path.
+  const pc = await launch('pc', { ...net.env, ...(process.platform === 'win32' ? {} : { PAIRDESK_FAKE_VCAM: '1' }) });
   pc.name = 'pc';
   const phone = await startPhone(net.env);
   t.after(async () => {
@@ -147,12 +152,27 @@ async function scenario(pc, phone) {
       return state && state !== 'starting' ? { state, text: await win.textContent('#camera-vcam') } : null;
     }, { timeout: 30_000, message: 'virtual webcam status' });
     process.stderr.write(`virtual webcam: ${vcam.state}: ${vcam.text}\n`);
-    if (process.platform === 'win32' && process.env.PAIRDESK_E2E_VCAM !== '0') {
-      assert.equal(vcam.state, 'ready', `virtual webcam ready: ${vcam.text}`);
+    assert.ok(['ready', 'in-use'].includes(vcam.state), `virtual webcam ready: ${vcam.text}`);
+    // The phone's frames reach the camera helper (red in the middle).
+    let stats = null;
+    await poll(async () => {
+      stats = await pc.main.evaluate(() => window.pairdesk.invoke('e2e:vcam'));
+      const c = stats?.center;
+      return stats?.frames > 5 && c && c[0] > 180 && c[1] < 90 && c[2] < 90;
+    }, { timeout: 20_000, message: 'phone frames handed to the webcam' }).catch((err) => {
+      throw new Error(`${err.message}: ${JSON.stringify(stats)}`);
+    });
+    const t0 = stats.frames;
+    const shown = () => win.evaluate(() => document.querySelector('#camera-video').getVideoPlaybackQuality().totalVideoFrames);
+    const q0 = await shown();
+    await sleep(3000);
+    const received = ((await shown()) - q0) / 3;
+    const fps = ((await pc.main.evaluate(() => window.pairdesk.invoke('e2e:vcam'))).frames - t0) / 3;
+    process.stderr.write(`webcam: ${JSON.stringify(stats)}, ${fps.toFixed(1)} frames/s (${received.toFixed(1)} received)\n`);
+    assert.ok(fps >= 12, `webcam frame rate ${fps}`);
+    if (process.platform === 'win32') {
       await checkVirtualWebcam(pc);
       await poll(async () => (await vcamState()) === 'in-use', { message: 'webcam reported in use' });
-    } else if (process.platform !== 'win32') {
-      assert.equal(vcam.state, 'unsupported');
     }
 
     // The computer ends the session: the phone is told.
