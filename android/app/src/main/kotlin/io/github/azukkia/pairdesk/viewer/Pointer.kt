@@ -23,7 +23,7 @@ class Viewport(mode: InputMode = InputMode.TOUCHPAD) {
         set(value) {
             if (field == value) return
             field = value
-            changed()
+            changed(layout = false)
         }
 
     var cursorX: Double = 0.5
@@ -32,18 +32,19 @@ class Viewport(mode: InputMode = InputMode.TOUCHPAD) {
     var cursorY: Double = 0.5
         private set
 
-    private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    private val listeners = CopyOnWriteArrayList<(layout: Boolean) -> Unit>()
 
-    fun addListener(listener: () -> Unit) {
+    /** [listener] is called after every change; `layout` is true when the picture moved or was resized. */
+    fun addListener(listener: (layout: Boolean) -> Unit) {
         listeners += listener
     }
 
-    fun removeListener(listener: () -> Unit) {
+    fun removeListener(listener: (layout: Boolean) -> Unit) {
         listeners -= listener
     }
 
-    private fun changed() {
-        for (l in listeners) l()
+    private fun changed(layout: Boolean = true) {
+        for (l in listeners) l(layout)
     }
 
     val isReady: Boolean get() = geometry.isReady
@@ -81,7 +82,7 @@ class Viewport(mode: InputMode = InputMode.TOUCHPAD) {
         if (nx == cursorX && ny == cursorY) return
         cursorX = nx
         cursorY = ny
-        changed()
+        changed(layout = false)
     }
 
     val cursor: RemotePoint get() = RemotePoint.of(cursorX, cursorY)

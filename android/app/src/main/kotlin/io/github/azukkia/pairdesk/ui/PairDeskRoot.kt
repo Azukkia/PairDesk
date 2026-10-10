@@ -23,7 +23,7 @@ import io.github.azukkia.pairdesk.ui.home.HomeViewModel
 import io.github.azukkia.pairdesk.ui.session.CameraScreen
 import io.github.azukkia.pairdesk.ui.session.HostSessionScreen
 import io.github.azukkia.pairdesk.ui.session.IncomingRequestDialog
-import io.github.azukkia.pairdesk.ui.session.ViewerScreen
+import io.github.azukkia.pairdesk.ui.viewer.ViewerScreen
 import io.github.azukkia.pairdesk.ui.settings.SettingsScreen
 import io.github.azukkia.pairdesk.ui.settings.SettingsViewModel
 
@@ -51,6 +51,16 @@ fun PairDeskRoot(graph: AppGraph) {
         }
     }
 
+    // A session controlling a computer always has its screen (e.g. the activity
+    // was recreated while the session ran in the background).
+    val viewers by graph.viewers.all.collectAsStateWithLifecycle()
+    LaunchedEffect(viewers) {
+        for (sid in viewers) {
+            val screen = Screen.Viewer(sid)
+            if (screen !in backStack.screens.value) backStack.push(screen)
+        }
+    }
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         AnimatedContent(
             targetState = current,
@@ -68,7 +78,12 @@ fun PairDeskRoot(graph: AppGraph) {
                         },
                     )
                     Screen.Settings -> SettingsScreen(settings, onBack = { backStack.pop() })
-                    is Screen.Viewer -> ViewerScreen(graph, screen.sid, onExit = { backStack.remove(screen) })
+                    is Screen.Viewer -> ViewerScreen(
+                        graph,
+                        screen.sid,
+                        onExit = { backStack.remove(screen) },
+                        onReplace = { sid -> backStack.replace(screen, Screen.Viewer(sid)) },
+                    )
                     is Screen.Camera -> CameraScreen(graph, screen.sid, onExit = { backStack.remove(screen) })
                     is Screen.HostSession -> HostSessionScreen(graph, screen.sid, onExit = { backStack.remove(screen) })
                 }

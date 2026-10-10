@@ -58,6 +58,9 @@ object KeyCodes {
 
     private val BY_EVDEV: Map<Int, String> = EVDEV.entries.associate { (code, evdev) -> evdev to code }
 
+    /** The Linux evdev code of [code] (keymap.js), for tests. */
+    internal fun evdevOf(code: String): Int? = EVDEV[code]
+
     /** Every code the desktop host can inject (keymap.js `KEYMAP`, without the OSLeft/OSRight aliases). */
     val SUPPORTED: Set<String> = EVDEV.keys
 

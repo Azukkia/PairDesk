@@ -12,6 +12,7 @@ import io.github.azukkia.pairdesk.net.AndroidLogger
 import io.github.azukkia.pairdesk.net.NetworkLifecycle
 import io.github.azukkia.pairdesk.net.PairDeskNetwork
 import io.github.azukkia.pairdesk.rtc.RtcSessions
+import io.github.azukkia.pairdesk.session.ViewerSessions
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +44,9 @@ class AppGraph(context: Context) {
 
     /** WebRTC peer connections of the running sessions. */
     val rtc = RtcSessions(appContext, network, log)
+
+    /** Computers controlled from this phone (created on the main thread, on first use). */
+    val viewers: ViewerSessions by lazy { ViewerSessions(this) }
 
     private companion object {
         const val PREFS = "pairdesk"

@@ -64,6 +64,8 @@ android {
         unitTests.isReturnDefaultValues = true
         unitTests.all { test ->
             test.useJUnitPlatform()
+            // The desktop sources (src/shared/keymap.js…) that the Android tables must match.
+            test.systemProperty("pairdesk.repoRoot", rootProject.projectDir.parentFile.absolutePath)
             test.testLogging {
                 events("passed", "skipped", "failed")
                 exceptionFormat = TestExceptionFormat.FULL
