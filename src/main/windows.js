@@ -135,6 +135,21 @@ export class Windows {
     return win;
   }
 
+  // ───────────── camera window (a phone's camera on this computer) ─────────────
+
+  createCamera({ peerName, peerId }) {
+    const win = this.#create('camera', {
+      width: 760,
+      height: 560,
+      minWidth: 420,
+      minHeight: 320,
+      title: `${peerName || peerId} — PairDesk Camera`,
+      backgroundColor: '#05070d',
+    });
+    win.once('ready-to-show', () => win.show());
+    return win;
+  }
+
   // ───────────── host panel (controlled side) ─────────────
 
   createHost() {

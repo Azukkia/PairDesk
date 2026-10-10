@@ -58,6 +58,8 @@ jobs:
       - run: npm ci
       - name: Unit tests
         run: npm test
+      - name: Build the "PairDesk Camera" webcam (DirectShow filter)
+        run: npm run build:camera
       - name: End-to-end test (real Windows desktop, SendInput)
         run: npm run test:e2e
         env:
@@ -89,7 +91,12 @@ jobs:
           $env:PAIRDESK_E2E_ARTIFACTS = Join-Path $env:RUNNER_TEMP 'e2e-installed'
           npm run test:e2e
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $camera = 'HKCU:\Software\Classes\CLSID\{DC55A64C-A76A-40C0-8494-4D5E79100E45}'
+          if (-not (Test-Path $camera)) { throw 'the camera session did not register PairDesk Camera' }
           Start-Process -FilePath (Join-Path $dir 'Uninstall PairDesk.exe') -ArgumentList '/S' -Wait
+          # The uninstaller finishes from a copy of itself: wait for it.
+          for ($i = 0; $i -lt 60 -and ((Test-Path $exe) -or (Test-Path $camera)); $i++) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $camera) { throw 'PairDesk Camera is still registered after uninstalling' }
       - uses: actions/upload-artifact@v4
         with:
           name: PairDesk-Setup-windows

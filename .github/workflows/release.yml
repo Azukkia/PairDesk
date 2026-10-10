@@ -83,6 +83,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Build the "PairDesk Camera" webcam (Windows)
+        if: runner.os == 'Windows'
+        run: npm run build:camera
       - name: Build and upload to the draft release
         run: npx electron-builder ${{ matrix.args }} --publish always
         env:

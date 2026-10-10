@@ -21,11 +21,12 @@ export function physicalRect(display) {
 }
 
 export class SessionManager extends EventEmitter {
-  constructor({ network, settings, input, clipboard, clipTransfers, files, windows, log, appVersion, notify, t }) {
+  constructor({ network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera = null, log, appVersion, notify, t }) {
     super();
-    Object.assign(this, { network, settings, input, clipboard, clipTransfers, files, windows, log, appVersion, notify, t });
+    Object.assign(this, { network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera, log, appVersion, notify, t });
     this.outgoing = new Map();
     this.host = null;
+    this.camera = null; // a phone streaming its camera to this computer
     this.connecting = null;
     this.contexts = new Map();
     this.displayRectCache = new Map();
@@ -68,7 +69,7 @@ export class SessionManager extends EventEmitter {
   }
 
   hasActiveSessions() {
-    return this.outgoing.size > 0 || Boolean(this.host);
+    return this.outgoing.size > 0 || Boolean(this.host) || Boolean(this.camera);
   }
 
   contextOf(webContents) {
@@ -81,6 +82,7 @@ export class SessionManager extends EventEmitter {
         ? { peerId: this.host.peerId, peerName: this.host.peerName, state: this.host.state, control: this.host.perms.control }
         : null,
       outgoing: [...this.outgoing.values()].map((e) => ({ sid: e.sid, peerId: e.peerId, peerName: e.peerName })),
+      camera: this.camera ? { peerId: this.camera.peerId, peerName: this.camera.peerName } : null,
     };
   }
 
@@ -211,6 +213,10 @@ export class SessionManager extends EventEmitter {
   }
 
   #onIncoming(session) {
+    if (session.kind === 'camera') {
+      this.#onCamera(session);
+      return;
+    }
     if (this.host) {
       this.signaling.reject(session.sid, 'busy');
       return;
@@ -273,6 +279,67 @@ export class SessionManager extends EventEmitter {
     if (!this.windows.isMainVisible()) {
       this.notify(this.t('notify.incomingTitle'), this.t('notify.incomingBody', { name: host.peerName, id: host.peerId }));
     }
+  }
+
+  // ───────────────────────── camera sessions ─────────────────────────
+
+  /**
+   * A phone streams its camera to this computer (it knows the password):
+   * accepted right away, shown in a camera window and, on Windows, exposed
+   * to the applications as the "PairDesk Camera" webcam.
+   */
+  #onCamera(session) {
+    if (this.camera) {
+      this.signaling.reject(session.sid, 'busy');
+      return;
+    }
+    const cam = {
+      kind: 'camera',
+      sid: session.sid,
+      peerId: session.peerId,
+      peerName: session.peerName || this.t('host.unknownName'),
+      peerPlatform: session.peerPlatform,
+      peerVersion: session.peerVersion || '',
+      credential: session.credential,
+      queue: [],
+      ready: false,
+      win: null,
+    };
+    this.camera = cam;
+    this.log.info(`[session] camera of ${cam.peerId} connected (${cam.credential} password)`);
+    this.signaling.accept(cam.sid, {
+      name: this.displayName(),
+      caps: { control: false, files: false, clipboard: false, audio: false },
+      platform: process.platform,
+      appVersion: this.appVersion,
+      kind: 'camera',
+    }).catch((err) => this.log.warn(`[session] accept failed: ${err.message}`));
+    cam.win = this.windows.createCamera({ peerName: cam.peerName, peerId: cam.peerId });
+    const wcId = cam.win.webContents.id;
+    this.contexts.set(wcId, cam);
+    cam.win.on('closed', () => {
+      this.contexts.delete(wcId);
+      if (this.camera === cam) this.endSession(cam.sid, 'camera-closed');
+    });
+    this.notify(this.t('notify.cameraTitle'), this.t('notify.cameraBody', { name: cam.peerName }), () => cam.win?.show());
+    this.#changed();
+  }
+
+  /** The camera window shows the picture: registers and starts the webcam, links the window to it. */
+  async attachVirtualCamera(ctx) {
+    if (ctx !== this.camera || !this.virtualCamera) return { supported: false, active: false, error: null };
+    const status = await this.virtualCamera.start();
+    if (status.active && ctx === this.camera && !ctx.win.isDestroyed()) this.virtualCamera.attach(ctx.win.webContents);
+    return status;
+  }
+
+  #teardownCamera(cam, { notifyPeer = true, reason = 'user' } = {}) {
+    if (this.camera !== cam) return;
+    this.camera = null;
+    if (notifyPeer) this.signaling.close(cam.sid, reason);
+    if (cam.win && !cam.win.isDestroyed()) cam.win.destroy();
+    this.log.info(`[session] camera of ${cam.peerId} disconnected (${reason})`);
+    this.#changed();
   }
 
   hostConsent(sid, accept, reason = 'declined') {
@@ -394,6 +461,9 @@ export class SessionManager extends EventEmitter {
         ended: ctx.ended,
       };
     }
+    if (ctx.kind === 'camera') {
+      return { ...common, role: 'camera', vcam: this.virtualCamera?.status() || { supported: false, active: false } };
+    }
     return { ...common, role: 'host', state: ctx.state, perms: ctx.perms, credential: ctx.credential };
   }
 
@@ -414,7 +484,7 @@ export class SessionManager extends EventEmitter {
   }
 
   #onSignal(sid, msg) {
-    const ctx = this.outgoing.get(sid) || (this.host?.sid === sid ? this.host : null);
+    const ctx = this.outgoing.get(sid) || (this.host?.sid === sid ? this.host : null) || (this.camera?.sid === sid ? this.camera : null);
     if (!ctx || msg?.type !== 'signal' || !msg.data) return;
     if (ctx.ready && !ctx.win.isDestroyed()) ctx.win.webContents.send('session:signal', msg.data);
     else ctx.queue.push(msg.data);
@@ -442,6 +512,7 @@ export class SessionManager extends EventEmitter {
       return;
     }
     if (this.host && this.host.sid === sid) this.#teardownHost(this.host, { notifyPeer, reason });
+    if (this.camera && this.camera.sid === sid) this.#teardownCamera(this.camera, { notifyPeer, reason });
   }
 
   #teardownHost(host, { notifyPeer = true, reason = 'user' } = {}) {
@@ -465,6 +536,7 @@ export class SessionManager extends EventEmitter {
   endAll() {
     for (const sid of [...this.outgoing.keys()]) this.endSession(sid, 'quit');
     if (this.host) this.#teardownHost(this.host, { reason: 'quit' });
+    if (this.camera) this.#teardownCamera(this.camera, { reason: 'quit' });
   }
 
   // ───────────────────────── clipboard & files ─────────────────────────

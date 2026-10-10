@@ -1,0 +1,32 @@
+/* Camera window: a phone's camera shown on this computer (and fed to the "PairDesk Camera" webcam). */
+
+body.camera { background: #05070d; overflow: hidden; }
+#app { height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+
+.cam-top {
+  display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 10px 0 16px;
+  background: var(--bg-elev); border-bottom: 1px solid var(--border);
+}
+.cam-top .peer { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.cam-top .peer b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 40px; }
+.cam-top .peer .id { color: var(--text-faint); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cam-top .tools { display: flex; align-items: center; gap: 6px; }
+
+.cam-stage { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; background: #05070d; }
+.cam-stage video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.cam-stage video.mirror { transform: scaleX(-1); }
+.cam-stage .overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  color: #c9d2e6; font-size: 14px; background: rgba(5, 7, 13, 0.6);
+}
+.cam-stage .overlay .icon { width: 36px; height: 36px; color: #8aa4ff; }
+
+.vcam {
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 16px;
+  background: var(--bg-elev); border-top: 1px solid var(--border); font-size: 13px; color: var(--text-muted); line-height: 1.4;
+}
+.vcam .icon { flex: none; }
+.vcam.ok .icon { color: var(--success); }
+.vcam.busy .icon { color: var(--accent); }
+.vcam.error .icon { color: var(--danger); }
+.cam-top .badge { white-space: nowrap; flex: none; }

@@ -13,6 +13,7 @@ const INVOKE = new Set([
   'host:consent', 'host:displays', 'host:end',
   'files:begin', 'files:end', 'files:show',
   'clipboard:current', 'clipboard:list', 'clipboard:read', 'clipboard:expect',
+  'camera:attach', 'camera:end',
   'e2e:cursor',
 ]);
 
@@ -45,6 +46,27 @@ ipcRenderer.on('input:port', (event) => {
   inputPort.start();
 });
 
+// Camera window only: a direct line to the camera helper process, which
+// hands the phone's frames to the "PairDesk Camera" virtual webcam.
+let cameraPort = null;
+let cameraFormat = null;
+const cameraListeners = new Set();
+ipcRenderer.on('camera:port', (event, format) => {
+  try {
+    cameraPort?.close();
+  } catch {
+    /* ignore */
+  }
+  cameraPort = event.ports[0] || null;
+  cameraFormat = format || null;
+  if (!cameraPort) return;
+  cameraPort.onmessage = (e) => {
+    for (const cb of cameraListeners) cb(e.data);
+  };
+  cameraPort.start();
+  for (const cb of cameraListeners) cb({ type: 'linked', ...cameraFormat });
+});
+
 contextBridge.exposeInMainWorld('pairdesk', {
   platform: process.platform,
   invoke(channel, ...args) {
@@ -70,6 +92,22 @@ contextBridge.exposeInMainWorld('pairdesk', {
     on(callback) {
       inputListeners.add(callback);
       return () => inputListeners.delete(callback);
+    },
+  },
+  cameraPort: {
+    /** { width, height } expected by the virtual webcam, or null when not linked. */
+    format() {
+      return cameraPort ? cameraFormat : null;
+    },
+    /** Sends one RGBA frame (its buffer is transferred). */
+    sendFrame(width, height, data) {
+      if (!cameraPort) return false;
+      cameraPort.postMessage({ width, height, data }, [data]);
+      return true;
+    },
+    on(callback) {
+      cameraListeners.add(callback);
+      return () => cameraListeners.delete(callback);
     },
   },
   pathForFile(file) {

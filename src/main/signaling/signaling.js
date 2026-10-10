@@ -263,6 +263,8 @@ export class Signaling extends EventEmitter {
       peerName: typeof intro.name === 'string' ? intro.name.slice(0, 64) : '',
       peerPlatform: typeof intro.platform === 'string' ? intro.platform.slice(0, 16) : '',
       peerVersion: typeof intro.appVersion === 'string' ? intro.appVersion.slice(0, 32) : '',
+      // 'camera': a phone streams its camera to this computer (1.2+).
+      kind: intro.kind === 'camera' ? 'camera' : 'control',
       startedAt: Date.now(),
     };
     this.sessions.set(session.sid, session);

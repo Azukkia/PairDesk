@@ -85,6 +85,10 @@ const ICONS = {
   alert: 'M12 3 2 20h20zM12 10v4M12 17h.01',
   pointer: 'M4 3l7 17 2-7 7-2z',
   more: 'M12 6h.01M12 12h.01M12 18h.01',
+  camera: 'M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  phone: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2',
+  back: 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
+  square: 'M6 6h12v12H6z',
 };
 
 export function icon(name, cls = '') {

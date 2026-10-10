@@ -20,7 +20,11 @@ const PING_INTERVAL_MS = 250;
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 export class RtcSession extends EventTarget {
-  constructor({ role, iceServers }) {
+  /**
+   * `camera` (host only): a phone's camera session, the offer receives one
+   * video track and only the control channel exists (docs/PROTOCOL.md 6).
+   */
+  constructor({ role, iceServers, camera = false }) {
     super();
     this.role = role;
     this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 2 });
@@ -57,8 +61,12 @@ export class RtcSession extends EventTarget {
 
     if (role === 'host') {
       this.#adoptChannel(pc.createDataChannel('control', { ordered: true }));
-      this.#adoptChannel(pc.createDataChannel('input', { ordered: true }));
-      this.#adoptChannel(pc.createDataChannel('pointer', { ordered: false, maxRetransmits: 0 }));
+      if (camera) {
+        pc.addTransceiver('video', { direction: 'recvonly' });
+      } else {
+        this.#adoptChannel(pc.createDataChannel('input', { ordered: true }));
+        this.#adoptChannel(pc.createDataChannel('pointer', { ordered: false, maxRetransmits: 0 }));
+      }
       pc.onnegotiationneeded = () => this.#offer();
     }
     // Signaling messages are applied strictly one after the other.

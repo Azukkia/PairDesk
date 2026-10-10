@@ -20,6 +20,7 @@ import { DropManager } from './drops.js';
 import { InputService } from './input-service.js';
 import { clipboardSequence, createClipboardFiles } from './clipboard-native.js';
 import { ClipboardTransfers } from './clipboard-transfer.js';
+import { VirtualCamera } from './camera/virtual-camera.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
 import { MIN_PERMANENT_PASSWORD_LENGTH, normalizeId, isValidId } from '../shared/protocol.js';
 
@@ -86,6 +87,7 @@ function registerAppProtocol() {
     viewer: path.join(appPath, 'src', 'renderer', 'viewer'),
     host: path.join(appPath, 'src', 'renderer', 'host'),
     drop: path.join(appPath, 'src', 'renderer', 'drop'),
+    camera: path.join(appPath, 'src', 'renderer', 'camera'),
     common: path.join(appPath, 'src', 'renderer', 'common'),
     shared: path.join(appPath, 'src', 'shared'),
     assets: path.join(appPath, 'assets'),
@@ -164,8 +166,9 @@ async function main() {
 
   let sessions;
   const network = new Network({ settings, config, log, canAccept: () => sessions.canAccept() });
+  const virtualCamera = new VirtualCamera({ appPath, resourcesPath: process.resourcesPath, packaged: app.isPackaged, log });
   sessions = new SessionManager({
-    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, log, appVersion: app.getVersion(), notify,
+    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, virtualCamera, log, appVersion: app.getVersion(), notify,
     // The translator changes with the language setting.
     t: (key, vars) => t(key, vars),
   });
@@ -319,6 +322,7 @@ async function main() {
     });
   };
   const SESSION = ['viewer', 'host'];
+  const RTC = [...SESSION, 'camera']; // windows with a WebRTC session
 
   // Main window
   handle('app:state', ['main'], () => appState());
@@ -365,15 +369,15 @@ async function main() {
   });
 
   // Session windows (viewer = controller side, host = controlled side)
-  handle('session:init', SESSION, async (ctx) => {
+  handle('session:init', RTC, async (ctx) => {
     const payload = sessions.initPayload(ctx);
     if (ctx.kind === 'host') payload.displays = await sessions.listDisplays();
     payload.lang = lang;
     return payload;
   });
-  on('session:ready', SESSION, (ctx) => sessions.rendererReady(ctx));
-  on('session:signal', SESSION, (ctx, data) => sessions.sendSignal(ctx, data));
-  on('session:failed', SESSION, (ctx, reason) => {
+  on('session:ready', RTC, (ctx) => sessions.rendererReady(ctx));
+  on('session:signal', RTC, (ctx, data) => sessions.sendSignal(ctx, data));
+  on('session:failed', RTC, (ctx, reason) => {
     log.warn(`[session] ${ctx.kind} reported failure: ${reason}`);
     sessions.endSession(ctx.sid, 'failed');
   });
@@ -392,6 +396,8 @@ async function main() {
     if (prefs.scale) patch.viewerScale = prefs.scale;
     settings.update(patch);
   });
+  handle('camera:attach', ['camera'], (ctx) => sessions.attachVirtualCamera(ctx));
+  handle('camera:end', ['camera'], (ctx) => sessions.endSession(ctx.sid, 'camera-ended'));
   handle('host:consent', ['host'], (ctx, accept) => sessions.hostConsent(ctx.sid, Boolean(accept)));
   handle('host:displays', ['host'], () => sessions.listDisplays());
   on('host:set-display', ['host'], (ctx, displayId) => sessions.setHostDisplay(ctx, displayId));
@@ -525,6 +531,7 @@ async function main() {
     setTimeout(() => {
       network.stop();
       input.stop();
+      virtualCamera.stop();
     }, 200);
   });
   app.on('window-all-closed', () => {
