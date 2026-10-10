@@ -144,3 +144,12 @@ body { overflow: hidden; }
 @media (max-width: 960px) {
   .home-grid { grid-template-columns: 1fr; }
 }
+
+/* The Android app, with a QR code to download it from the phone. */
+.phone-card { display: flex; gap: 20px; align-items: center; padding: 16px 22px; }
+.phone-card .qr-box { flex: none; width: 116px; height: 116px; border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid var(--border); }
+.phone-card .qr { display: block; }
+.phone-card h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 6px; }
+.phone-card .desc { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.phone-card .hint { color: var(--text-faint); font-size: 12.5px; margin: 6px 0 10px; }
+.phone-card .row { display: flex; gap: 8px; flex-wrap: wrap; }

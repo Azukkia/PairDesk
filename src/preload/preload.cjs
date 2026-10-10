@@ -5,7 +5,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const INVOKE = new Set([
-  'app:state', 'app:regenerate-password', 'app:copy', 'app:open-external', 'app:open-logs',
+  'app:state', 'app:regenerate-password', 'app:copy', 'app:open-external', 'app:open-logs', 'app:android',
   'settings:update', 'settings:set-permanent-password', 'recents:remove', 'recents:forget-password',
   'connect:probe', 'connect:start', 'connect:cancel', 'session:end-incoming',
   'update:check', 'update:download', 'update:install',

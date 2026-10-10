@@ -21,6 +21,7 @@ import { InputService } from './input-service.js';
 import { clipboardSequence, createClipboardFiles } from './clipboard-native.js';
 import { ClipboardTransfers } from './clipboard-transfer.js';
 import { VirtualCamera } from './camera/virtual-camera.js';
+import { qrRows } from './qr.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
 import { MIN_PERMANENT_PASSWORD_LENGTH, normalizeId, isValidId } from '../shared/protocol.js';
 
@@ -331,6 +332,7 @@ async function main() {
   handle('app:open-external', ['main'], (_ctx, url) => {
     if (typeof url === 'string' && (url.startsWith(config.homepage) || url.startsWith('https://github.com/Azukkia/PairDesk'))) shell.openExternal(url);
   });
+  handle('app:android', ['main'], () => ({ url: config.androidApkUrl, qr: qrRows(config.androidApkUrl) }));
   handle('app:open-logs', ['main'], () => shell.openPath(path.dirname(log.file || app.getPath('userData'))));
   handle('settings:update', ['main'], (_ctx, patch) => {
     settings.update(patch);

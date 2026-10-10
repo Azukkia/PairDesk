@@ -113,6 +113,50 @@ function updateBanner(compact) {
 
 // ───────────────────────────── home ─────────────────────────────
 
+/** QR code (rows of '0'/'1') as SVG squares. */
+function qrSvg(rows, size = 116) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const n = rows.length + 4; // quiet zone
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${n} ${n}`);
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('class', 'qr');
+  svg.setAttribute('shape-rendering', 'crispEdges');
+  const bg = document.createElementNS(NS, 'rect');
+  bg.setAttribute('width', String(n));
+  bg.setAttribute('height', String(n));
+  bg.setAttribute('fill', '#fff');
+  const path = document.createElementNS(NS, 'path');
+  let d = '';
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) if (row[x] === '1') d += `M${x + 2} ${y + 2}h1v1h-1z`;
+  });
+  path.setAttribute('d', d);
+  path.setAttribute('fill', '#0e1322');
+  svg.append(bg, path);
+  return svg;
+}
+
+/** The Android app: control this computer from the phone, show the phone here, use it as a webcam. */
+function PhoneCard() {
+  const qrBox = h('div', { class: 'qr-box' });
+  let url = '';
+  api.invoke('app:android').then((res) => {
+    url = res.url;
+    clear(qrBox, qrSvg(res.qr));
+  });
+  return h('section', { class: 'card phone-card', id: 'phone-card' },
+    qrBox,
+    h('div', { class: 'phone-text' },
+      h('h3', null, icon('phone', 'sm'), t('home.phone.title')),
+      h('p', { class: 'desc' }, t('home.phone.desc')),
+      h('p', { class: 'hint' }, t('home.phone.hint')),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn small', onclick: () => url && copy(url) }, icon('copy', 'sm'), t('home.phone.copy')),
+        h('button', { class: 'btn small ghost', onclick: () => url && api.invoke('app:open-external', url) }, icon('download', 'sm'), t('home.phone.download')))));
+}
+
 function HomePage() {
   const idValue = h('span', { class: 'value', id: 'my-id' });
   const pwValue = h('span', { class: 'value password', id: 'my-password' });
@@ -177,7 +221,7 @@ function HomePage() {
   const how = h('section', { class: 'card how', hidden: true },
     h('h3', null, t('home.howTitle')),
     h('div', { class: 'how-steps' }, [1, 2, 3].map((n) => h('div', { class: 'how-step' }, h('span', { class: 'num' }, String(n)), h('span', null, t(`home.step${n}`))))));
-  const el = h('div', { class: 'stack', style: { gap: '18px' } }, h('div', { class: 'home-grid' }, incoming, outgoing), how);
+  const el = h('div', { class: 'stack', style: { gap: '18px' } }, h('div', { class: 'home-grid' }, incoming, outgoing), PhoneCard(), how);
   setTimeout(() => idInput.focus(), 50);
 
   return {

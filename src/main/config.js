@@ -25,6 +25,8 @@ const DEFAULTS = {
   // Where to look for updates and the project page.
   homepage: 'https://github.com/Azukkia/PairDesk',
   releasesUrl: 'https://github.com/Azukkia/PairDesk/releases',
+  // The Android app of the latest release (fixed name: a permanent link).
+  androidApkUrl: 'https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk',
 };
 
 export function loadConfig(appPath) {
