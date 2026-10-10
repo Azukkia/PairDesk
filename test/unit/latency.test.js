@@ -11,6 +11,7 @@ import { CSS_CURSORS, WIN_IDC_TO_CSS, X11_NAME_TO_CSS, cssFromX11Name } from '..
 import { versionAtLeast, QUALITY_PRESETS } from '../../src/shared/protocol.js';
 import { createCursorTracker } from '../../src/main/cursor.js';
 import { ClipboardSync } from '../../src/main/clipboard.js';
+import { fakeClipboard, FakeClipboardItem } from './fake-clipboard.js';
 
 // Renderer modules import '../shared/x.js', which the app:// protocol maps to
 // src/shared: rewrite those specifiers to load them in Node.
@@ -374,11 +375,11 @@ test('remote cursor (viewer): validates shapes and bitmaps', async () => {
   assert.equal(el.style.cursor, '');
 });
 
-test('clipboard: limit counts UTF-8 bytes', () => {
-  const written = [];
-  const sync = new ClipboardSync({ clipboard: { readText: () => '', writeText: (t) => written.push(t) } });
-  sync.setText('é'.repeat(150 * 1024)); // 300 KiB in UTF-8
-  assert.equal(written.length, 0);
-  sync.setText('a'.repeat(150 * 1024));
-  assert.equal(written.length, 1);
+test('clipboard: limit counts UTF-8 bytes', async () => {
+  const board = fakeClipboard();
+  const sync = new ClipboardSync({ clipboard: board, ClipboardItem: FakeClipboardItem });
+  assert.equal(await sync.setText('é'.repeat(150 * 1024)), false); // 300 KiB in UTF-8
+  assert.equal(board.writes.length, 0);
+  assert.equal(await sync.setText('a'.repeat(150 * 1024)), true);
+  assert.equal(board.writes.length, 1);
 });

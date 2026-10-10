@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  app, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, protocol, safeStorage, session, shell,
+  app, ClipboardItem, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, protocol, safeStorage, session, shell,
 } from 'electron';
 import { log, initLogFile } from './log.js';
 import { loadConfig } from './config.js';
@@ -18,7 +18,8 @@ import { ClipboardSync } from './clipboard.js';
 import { FileReceiver } from './files.js';
 import { DropManager } from './drops.js';
 import { InputService } from './input-service.js';
-import { clipboardSequence } from './clipboard-native.js';
+import { clipboardSequence, createClipboardFiles } from './clipboard-native.js';
+import { ClipboardTransfers } from './clipboard-transfer.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
 import { MIN_PERMANENT_PASSWORD_LENGTH, normalizeId, isValidId } from '../shared/protocol.js';
 
@@ -133,7 +134,11 @@ async function main() {
 
   const input = new InputService({ appPath, log });
   await input.start();
-  const clipboardSync = new ClipboardSync({ clipboard, getSequence: clipboardSequence(log), log });
+  const clipboardSync = new ClipboardSync({
+    clipboard, ClipboardItem, files: createClipboardFiles({ log }), getSequence: clipboardSequence(log), log,
+  });
+  const clipTransfers = new ClipboardTransfers({ clipboard: clipboardSync, log });
+  clipTransfers.cleanup();
   const downloadsDir = () => process.env.PAIRDESK_DOWNLOADS_DIR || path.join(app.getPath('downloads'), 'PairDesk');
   const files = new FileReceiver({ getDirectory: downloadsDir, log });
 
@@ -160,7 +165,7 @@ async function main() {
   let sessions;
   const network = new Network({ settings, config, log, canAccept: () => sessions.canAccept() });
   sessions = new SessionManager({
-    network, settings, input, clipboard: clipboardSync, files, windows, log, appVersion: app.getVersion(), notify,
+    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, log, appVersion: app.getVersion(), notify,
     // The translator changes with the language setting.
     t: (key, vars) => t(key, vars),
   });
@@ -394,10 +399,32 @@ async function main() {
   handle('host:end', ['host'], (ctx) => sessions.endSession(ctx.sid, 'host-ended'));
   on('host:resize', ['host'], (ctx, height) => windows.resizeHost(ctx.win, Number(height) || 200));
   on('host:collapse', ['host'], (ctx, collapsed) => windows.collapseHost(ctx.win, Boolean(collapsed)));
-  on('clipboard:remote', SESSION, (ctx, text) => sessions.remoteClipboard(ctx, String(text)));
+  on('clipboard:remote', SESSION, (ctx, payload) => sessions.remoteClipboard(ctx, payload));
+  handle('clipboard:current', SESSION, (ctx) => sessions.currentClipboard(ctx));
+  handle('clipboard:list', SESSION, (ctx, cid) => (sessions.clipboardFilesAllowed(ctx) ? clipTransfers.list(String(cid)) : null));
+  handle('clipboard:read', SESSION, (ctx, cid, id, start, end) => {
+    if (!sessions.clipboardFilesAllowed(ctx)) throw new Error('clipboard disabled');
+    return clipTransfers.read(String(cid), id, start, end);
+  });
+  handle('clipboard:expect', SESSION, (ctx, { cid, n, folders } = {}) => {
+    if (!sessions.clipboardFilesAllowed(ctx)) return null;
+    return clipTransfers.expect(ctx, String(cid), n, folders);
+  });
 
   // File transfers (received files go to Downloads/PairDesk)
-  handle('files:begin', SESSION, (ctx, { name, size, drop } = {}) => {
+  handle('files:begin', SESSION, (ctx, { name, size, drop, clip } = {}) => {
+    if (clip) {
+      // Clipboard content (image, copied files): into a staging folder.
+      const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name)) : null;
+      if (!accepted) return { ok: false, error: 'disabled' };
+      try {
+        const res = files.begin(ctx.sid, accepted.name, Number(size), { directory: accepted.directory });
+        clipTransfers.track(res.token, ctx, clip.cid, accepted);
+        return { ok: true, ...res, clip: accepted.kind };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    }
     if (!sessions.canReceiveFiles(ctx)) return { ok: false, error: 'disabled' };
     try {
       // Dropped at a position of this screen: received in a staging folder,
@@ -415,15 +442,19 @@ async function main() {
     try {
       const file = await files.end(ctx.sid, String(token));
       drops.fileDone(String(token), file);
+      const clip = await clipTransfers.fileDone(String(token), file);
+      if (clip?.ready && !ctx.win.isDestroyed()) ctx.win.webContents.send('clipboard:ready', clip.ready);
       return { ok: true, path: file };
     } catch (err) {
       drops.fileDone(String(token), null);
+      clipTransfers.fileDone(String(token), null);
       return { ok: false, error: err.message };
     }
   });
   on('files:abort', SESSION, (ctx, token) => {
     files.abort(ctx.sid, String(token));
     drops.fileDone(String(token), null);
+    clipTransfers.fileDone(String(token), null);
   });
   // "dragstart" in the drop source window (checked against the window it opened).
   const dragIcon = nativeImage.createFromPath(path.join(appPath, 'assets', 'icon.png')).resize({ width: 32, height: 32 });

@@ -5,6 +5,7 @@
 
 import { api, h, clear, icon, t, setLanguage, formatDuration, initials } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
+import { ClipboardBridge } from '../common/clipboard-bridge.js';
 import { AdaptiveScaler, CpuWatch, rankCodecs } from '../common/adaptive.js';
 import { formatId, QUALITY_PRESETS, versionAtLeast } from '../shared/protocol.js';
 
@@ -30,6 +31,13 @@ const timers = {};
 const ui = {};
 
 const peerLabel = () => init.peer.name || formatId(init.peer.id);
+const clip = new ClipboardBridge({
+  rtc: () => rtc,
+  peerVersion: () => init?.peer?.version,
+  enabled: () => Boolean(perms.clipboard),
+  files: () => Boolean(perms.files),
+  view: (name, size, direction) => transfers.add(name, size, direction),
+});
 
 // ───────────────────────────── layout ─────────────────────────────
 
@@ -326,12 +334,13 @@ async function startHosting() {
   }
 
   rtc = new RtcSession({ role: 'host', iceServers: init.iceServers });
-  rtc.acceptFile = async ({ name, size, drop }) => {
-    if (!perms.files) return { ok: false };
+  rtc.acceptFile = async ({ name, size, drop, clip: clipInfo }) => {
+    if (!perms.files && !(clipInfo && perms.clipboard)) return { ok: false };
     // With a drop position: delivered where the controller dropped it.
-    const res = await api.invoke('files:begin', { name, size, drop: perms.control ? drop : undefined });
+    const res = await api.invoke('files:begin', { name, size, drop: perms.control ? drop : undefined, clip: clipInfo });
     if (!res.ok) return res;
-    return { ...res, view: transfers.add(res.name, size, 'in') };
+    const view = res.clip === 'image' ? { update() {} } : transfers.add(res.name, size, 'in');
+    return { ...res, view };
   };
   rtc.addEventListener('input', ({ detail }) => {
     if (!perms.control) return;
@@ -341,6 +350,7 @@ async function startHosting() {
     sendInfo();
     window.pairdesk.inputPort.send({ type: 'cursor-resync' });
     if (inputBlocked) rtc.sendControl({ type: 'input-blocked', reason: inputBlocked });
+    clip.sendCurrent();
   });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
@@ -421,7 +431,10 @@ function onControl(msg) {
       if (!chatOpen) toggleChat(true);
       break;
     case 'clipboard':
-      if (perms.clipboard && typeof msg.text === 'string') api.send('clipboard:remote', msg.text);
+    case 'clipboard-fetch':
+    case 'clipboard-files':
+    case 'clipboard-ready':
+      clip.onControl(msg);
       break;
     case 'bye':
       api.invoke('host:end');
@@ -449,8 +462,8 @@ api.on('session:state', ({ state, perms: p }) => {
     startHosting();
   }
 });
-api.on('clipboard:local', (text) => {
-  if (perms.clipboard && rtc?.pc.connectionState === 'connected') rtc.sendControl({ type: 'clipboard', text });
+api.on('clipboard:local', (payload) => {
+  if (rtc?.pc.connectionState === 'connected') clip.local(payload);
 });
 // From the input helper: shape of the local mouse cursor (drawn by the viewer
 // with zero delay), and whether Windows currently blocks injected input.

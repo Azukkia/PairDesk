@@ -7,6 +7,7 @@ import os from 'node:os';
 import { screen, desktopCapturer, powerSaveBlocker } from 'electron';
 import { PROTOCOL_VERSION, isValidId } from '../shared/protocol.js';
 import { derivePrs } from './crypto/prs.js';
+import { ClipboardSync } from './clipboard.js';
 import { SignalingError } from './signaling/signaling.js';
 
 export function physicalRect(display) {
@@ -20,17 +21,21 @@ export function physicalRect(display) {
 }
 
 export class SessionManager extends EventEmitter {
-  constructor({ network, settings, input, clipboard, files, windows, log, appVersion, notify, t }) {
+  constructor({ network, settings, input, clipboard, clipTransfers, files, windows, log, appVersion, notify, t }) {
     super();
-    Object.assign(this, { network, settings, input, clipboard, files, windows, log, appVersion, notify, t });
+    Object.assign(this, { network, settings, input, clipboard, clipTransfers, files, windows, log, appVersion, notify, t });
     this.outgoing = new Map();
     this.host = null;
     this.connecting = null;
     this.contexts = new Map();
     this.displayRectCache = new Map();
 
-    clipboard.on('change', (text) => {
-      for (const entry of this.#clipboardTargets()) entry.win.webContents.send('clipboard:local', text);
+    clipboard.on('change', async (content) => {
+      const targets = this.#clipboardTargets();
+      if (!targets.length) return;
+      const payload = await clipTransfers.announce(content);
+      if (!payload) return;
+      for (const entry of targets) if (!entry.win.isDestroyed()) entry.win.webContents.send('clipboard:local', payload);
     });
     const invalidate = () => {
       this.displayRectCache.clear();
@@ -426,6 +431,7 @@ export class SessionManager extends EventEmitter {
       this.outgoing.delete(sid);
       if (notifyPeer) this.signaling.close(sid, reason);
       this.#setClipboard(entry, false);
+      this.clipTransfers.endSession(entry);
       this.files.abortAll(sid);
       entry.ended = reason;
       if (!entry.win.isDestroyed()) {
@@ -446,6 +452,7 @@ export class SessionManager extends EventEmitter {
     if (notifyPeer) this.signaling.close(host.sid, reason);
     if (host.powerBlocker != null) powerSaveBlocker.stop(host.powerBlocker);
     this.#setClipboard(host, false);
+    this.clipTransfers.endSession(host);
     this.files.abortAll(host.sid);
     if (host.win && !host.win.isDestroyed()) host.win.destroy();
     if (host.state === 'active') {
@@ -481,9 +488,27 @@ export class SessionManager extends EventEmitter {
     this.#setClipboard(ctx, Boolean(enabled) && Boolean(ctx.caps.clipboard) && !ctx.ended);
   }
 
-  remoteClipboard(ctx, text) {
+  remoteClipboard(ctx, payload) {
     if (!ctx.clipboard) return;
-    this.clipboard.setText(text);
+    this.clipTransfers.remote(ctx, payload);
+  }
+
+  /** Current local clipboard as a payload for the partner (session start). */
+  async currentClipboard(ctx) {
+    if (!ctx.clipboard) return null;
+    const content = await this.clipboard.read();
+    return ClipboardSync.isEmpty(content) ? null : this.clipTransfers.announce(content);
+  }
+
+  /**
+   * Clipboard files may be exchanged in this session. A copied image only
+   * goes through the clipboard (never left on disk): the clipboard
+   * permission is enough for it.
+   */
+  clipboardFilesAllowed(ctx, kind = 'file') {
+    if (!ctx.clipboard) return false;
+    if (ctx.kind !== 'host') return !ctx.ended;
+    return ctx.state === 'active' && (kind === 'image' || this.settings.get('allowFileTransfer'));
   }
 
   canReceiveFiles(ctx) {

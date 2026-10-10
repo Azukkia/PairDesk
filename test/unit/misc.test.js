@@ -9,6 +9,7 @@ import { createTranslator, resolveLanguage, STRINGS } from '../../src/shared/i18
 import { sanitizeFileName, FileReceiver } from '../../src/main/files.js';
 import { Settings } from '../../src/main/settings.js';
 import { ClipboardSync } from '../../src/main/clipboard.js';
+import { fakeClipboard, FakeClipboardItem } from './fake-clipboard.js';
 
 test('keymap: scan codes and evdev codes are unique', () => {
   const entries = Object.entries(KEYMAP).filter(([code]) => !code.startsWith('OS'));
@@ -93,18 +94,18 @@ test('Settings: validation, secrets and recents', () => {
 });
 
 test('ClipboardSync reports local changes and does not echo remote text', async () => {
-  const board = { text: 'initial', readText() { return this.text; }, writeText(t) { this.text = t; } };
-  const sync = new ClipboardSync({ clipboard: board, intervalMs: 10 });
+  const board = fakeClipboard({ text: 'initial' });
+  const sync = new ClipboardSync({ clipboard: board, ClipboardItem: FakeClipboardItem, intervalMs: 10 });
   const seen = [];
-  sync.on('change', (t) => seen.push(t));
+  sync.on('change', (c) => seen.push(c.text));
   sync.acquire();
   await new Promise((r) => setTimeout(r, 30));
-  board.text = 'copied locally';
+  board.state.text = 'copied locally';
   await new Promise((r) => setTimeout(r, 40));
-  sync.setText('from partner');
+  await sync.setText('from partner');
   await new Promise((r) => setTimeout(r, 40));
   sync.release();
   assert.deepEqual(seen, ['copied locally']);
-  assert.equal(board.text, 'from partner');
+  assert.equal(board.state.text, 'from partner');
   assert.ok(sync.timer === null);
 });

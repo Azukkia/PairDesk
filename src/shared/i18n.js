@@ -229,6 +229,11 @@ const fr = {
   'viewer.blockedElevated': "Une fenêtre administrateur est au premier plan sur l'ordinateur distant : Windows y bloque la souris et le clavier à distance. Pour la contrôler, lancez PairDesk en administrateur sur cet ordinateur (ou fermez/mettez de côté cette fenêtre sur place).",
   'viewer.blockedSecure': "L'ordinateur distant affiche un écran sécurisé (demande d'autorisation administrateur, écran de verrouillage ou Ctrl+Alt+Suppr) : il ne peut pas être contrôlé à distance. Il faut le valider sur place.",
   'viewer.frozen': "L'image de l'ordinateur distant ne s'actualise plus : son écran est peut-être en veille ou verrouillé. PairDesk a essayé de le réveiller.",
+  'viewer.clipSending': "Copie des fichiers ({size}) vers l'ordinateur distant… Ils seront collés dès leur arrivée.",
+  'viewer.clipFilesReady': 'Fichiers copiés : prêts à être collés.',
+  'viewer.clipFailed': "Les fichiers copiés n'ont pas pu être envoyés à l'ordinateur distant.",
+  'viewer.clipBigFiles': "Des fichiers ({size}) sont copiés sur l'ordinateur distant.",
+  'viewer.clipFetch': 'Les récupérer ici',
   'viewer.delay': 'Délai ≈ {ms} ms',
   'viewer.delayHelp': "Délai estimé entre l'écran du partenaire et le vôtre (réseau + encodage + décodage).",
 
@@ -509,6 +514,11 @@ const en = {
   'viewer.blockedElevated': 'An administrator window is in the foreground on the remote computer: Windows blocks remote mouse and keyboard there. To control it, run PairDesk as administrator on that computer (or close/move that window on site).',
   'viewer.blockedSecure': 'The remote computer shows a secure screen (administrator permission prompt, lock screen or Ctrl+Alt+Del): it cannot be controlled remotely. Someone has to confirm it on site.',
   'viewer.frozen': 'The picture of the remote computer stopped updating: its screen may be asleep or locked. PairDesk tried to wake it up.',
+  'viewer.clipSending': 'Copying the files ({size}) to the remote computer… They will be pasted as soon as they arrive.',
+  'viewer.clipFilesReady': 'Copied files are ready to be pasted.',
+  'viewer.clipFailed': 'The copied files could not be sent to the remote computer.',
+  'viewer.clipBigFiles': 'Files ({size}) are copied on the remote computer.',
+  'viewer.clipFetch': 'Get them here',
   'viewer.delay': 'Delay ≈ {ms} ms',
   'viewer.delayHelp': "Estimated delay between your partner's screen and yours (network + encoding + decoding).",
 

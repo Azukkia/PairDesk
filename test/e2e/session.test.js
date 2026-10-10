@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import electronPath from 'electron';
 import { _electron as electron } from 'playwright-core';
 import http from 'node:http';
@@ -407,6 +408,43 @@ async function scenario(host, ctrl) {
     }), { timeout: 20_000, message: 'file dropped in the host window under the drop point' });
     assert.equal(title, `dropped:${dropName}`);
     await host.app.evaluate(() => globalThis.__dropZone.destroy());
+  }
+
+  // 5f. Files copied on the controller and pasted (Ctrl+V) in the viewer end up
+  // in the host's clipboard. Both instances share one clipboard here, so the
+  // check is that the host wrote a received copy (its staging folder).
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-copy-'));
+    const copied = path.join(dir, 'copie test.txt');
+    fs.writeFileSync(copied, 'contenu copié');
+    const readFiles = async () => {
+      if (process.platform === 'win32') {
+        const out = execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }'], { encoding: 'utf8' });
+        return out.split(/\r?\n/).filter(Boolean);
+      }
+      const list = await host.app.evaluate(async ({ clipboard }) => {
+        const [item] = await clipboard.read();
+        return item?.types.includes('text/uri-list') ? (await item.getType('text/uri-list')).text() : '';
+      });
+      return list.split(/\r?\n/).filter((l) => l.startsWith('file://')).map((l) => fileURLToPath(l));
+    };
+    if (process.platform === 'win32') {
+      execFileSync('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Path '${copied.replace(/'/g, "''")}'`]);
+    } else {
+      await ctrl.app.evaluate(({ clipboard, ClipboardItem }, uri) => clipboard.write([
+        new ClipboardItem({ 'electron application/osclipboard;format="text/uri-list"': uri }),
+      ]), pathToFileURL(copied).href);
+    }
+    await sleep(1500); // announced to the partner
+    await viewer.focus('#stage');
+    await viewer.keyboard.down('Control');
+    await viewer.keyboard.press('KeyV');
+    await viewer.keyboard.up('Control');
+    const received = await poll(async () => {
+      const files = await readFiles();
+      return files.find((f) => f.includes(`PairDesk${path.sep}clipboard`) && path.basename(f) === 'copie test.txt') || null;
+    }, { timeout: 20_000, message: 'copied file in the host clipboard' });
+    assert.equal(fs.readFileSync(received, 'utf8'), 'contenu copié');
   }
 
   // 6. Chat from the controller to the host panel.

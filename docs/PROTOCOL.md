@@ -197,10 +197,30 @@ Controller → host:
 
 Both ways:
 
-* `{type:'chat', text}` (≤ 2000 chars), `{type:'clipboard', text}`.
+* `{type:'chat', text}` (≤ 2000 chars).
+* Clipboard (only while both sides enabled it): 1.0/1.1 peers send and read
+  `{type:'clipboard', text}`. 1.2+ peers send
+  `{type:'clipboard', cid, text?, html?, rtf?, image?:{size}, files?:[{name, size, dir}], total?}`
+  whenever their clipboard changes (`cid`: random id of that content, ≤ 32
+  chars; `text`/`html`/`rtf` ≤ 200 KiB each and 240 KiB together; `files`
+  lists the copied top-level files and folders, `size` null for a folder,
+  `total` bytes in all). A 1.2 receiver writes text/HTML/RTF to its clipboard
+  right away. An image follows at once as a file transfer whose offer carries
+  `clip:{cid, kind:'image', n:1}`. Copied files are only announced; their
+  content travels on demand:
+  * `{type:'clipboard-fetch', cid}`: "send me the files of `cid`" (the
+    controller is leaving its window, maybe to paste locally).
+  * `{type:'clipboard-files', cid, n, folders}`: `n` files follow, as file
+    transfers with `clip:{cid, kind:'file', rel, n}` (`rel`: path relative to
+    the copied items, `/`-separated); `folders` lists empty folders to create.
+  * `{type:'clipboard-ready', cid}`: all of them are in the receiver's
+    clipboard (Windows CF_HDROP, X11 uri-list), pasting works now. The
+    controller pushes its copied files when the user presses Ctrl+V in the
+    viewer (the keystroke is sent once this arrives) or comes back to the
+    viewer window.
 * `{type:'ping', t}` → `{type:'pong', t}` (round trip for file pacing, 1.1+).
 * `{type:'bye'}`.
-* Files: `{type:'file-offer', fid, name, size, drop?}` → `{type:'file-accept'|'file-reject', fid}`;
+* Files: `{type:'file-offer', fid, name, size, drop?, clip?}` → `{type:'file-accept'|'file-reject', fid}`;
   the sender then opens data channel `file:<fid>` and sends the content in
   chunks (≤ 16 KiB), the receiver answers `{type:'file-done', fid, ok}` once
   `size` bytes arrived; either side may send `{type:'file-cancel', fid}`.

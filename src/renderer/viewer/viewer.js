@@ -1,8 +1,9 @@
 // Viewer window (controller side): shows the partner's screen and forwards
 // mouse and keyboard input.
 
-import { api, h, clear, icon, t, setLanguage, toast, showMenu } from '../common/ui.js';
+import { api, h, clear, icon, t, setLanguage, toast, showMenu, formatBytes } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
+import { ClipboardBridge } from '../common/clipboard-bridge.js';
 import { createRemoteCursor } from './remote-cursor.js';
 import { KEYMAP, KEY_COMBOS } from '../shared/keymap.js';
 import { formatId } from '../shared/protocol.js';
@@ -32,6 +33,16 @@ const pressedButtons = new Set();
 let transfers = null;
 let chat = null;
 let remoteCursor = null;
+// Copied files are fetched automatically below these sizes, on request above.
+const AUTO_PUSH_BYTES = 50 * 1024 * 1024;
+const AUTO_FETCH_BYTES = 200 * 1024 * 1024;
+const clip = new ClipboardBridge({
+  rtc: () => rtc,
+  peerVersion: () => init?.peer?.version,
+  enabled: () => st.clipboard && Boolean(init?.caps?.clipboard) && !st.ended,
+  files: () => Boolean(init?.caps?.files),
+  view: (name, size, direction) => transfers.add(name, size, direction),
+});
 
 const canControl = () => st.connected && !st.ended && Boolean(init?.caps?.control);
 
@@ -172,10 +183,12 @@ function startSession() {
   lastMove = null;
   remoteCursor.reset();
   rtc = new RtcSession({ role: 'viewer', iceServers: init.iceServers });
-  rtc.acceptFile = async ({ name, size }) => {
-    const res = await api.invoke('files:begin', { name, size });
+  rtc.acceptFile = async ({ name, size, clip: clipInfo }) => {
+    const res = await api.invoke('files:begin', { name, size, clip: clipInfo });
     if (!res.ok) return res;
-    return { ...res, view: transfers.add(res.name, size, 'in') };
+    // Clipboard images arrive silently; copied files show their progress.
+    const view = res.clip === 'image' ? { update() {} } : transfers.add(res.name, size, 'in');
+    return { ...res, view };
   };
   rtc.addEventListener('track', ({ detail: event }) => {
     const { track } = event;
@@ -193,6 +206,7 @@ function startSession() {
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
   rtc.addEventListener('control-open', () => {
     rtc.sendControl({ type: 'hello', quality: st.quality, clipboard: st.clipboard });
+    clip.sendCurrent(); // copy before connecting, paste over there
   });
   rtc.addEventListener('control-close', () => {
     if (!st.ended) onConnectionState('disconnected');
@@ -290,7 +304,18 @@ function onControl(msg) {
       }
       break;
     case 'clipboard':
-      if (st.clipboard && typeof msg.text === 'string') api.send('clipboard:remote', msg.text);
+      clip.onControl(msg);
+      // Big copied files over there: fetched only when asked.
+      if (clip.inbox && clip.inbox.total > AUTO_FETCH_BYTES) {
+        toast(t('viewer.clipBigFiles', { size: formatBytes(clip.inbox.total) }), {
+          type: 'info', action: { label: t('viewer.clipFetch'), run: () => clip.fetch() },
+        });
+      }
+      break;
+    case 'clipboard-fetch':
+    case 'clipboard-files':
+    case 'clipboard-ready':
+      clip.onControl(msg);
       break;
     case 'cursor':
       remoteCursor.handle(msg);
@@ -538,6 +563,30 @@ function mapPoint(e, clamp = false) {
   return [round4(x), round4(y)];
 }
 
+// Ctrl+V (or Shift+Insert) held while copied files travel to the remote clipboard.
+let heldPaste = null;
+function holdPaste(e) {
+  const mods = [];
+  if (e.ctrlKey) mods.push('ControlLeft');
+  if (e.metaKey) mods.push('MetaLeft');
+  if (e.shiftKey) mods.push('ShiftLeft');
+  heldPaste = { code: e.code, released: false };
+  const out = clip.undelivered;
+  toast(t('viewer.clipSending', { size: formatBytes(out.total || 0) }), { type: 'info' });
+  clip.push(out.cid).then((ok) => {
+    const held = heldPaste;
+    heldPaste = null;
+    if (!ok) toast(t('viewer.clipFailed'), { type: 'error' });
+    if (!ok || !held || !canControl()) return;
+    // The modifiers may have been released meanwhile: send the whole shortcut.
+    const missing = mods.filter((m) => ![...pressedKeys].some((k) => k.startsWith(m.replace('Left', ''))));
+    const events = [...missing.map((m) => ['k', m, 1]), ['k', held.code, 1]];
+    if (held.released || missing.length) events.push(['k', held.code, 0]);
+    events.push(...missing.reverse().map((m) => ['k', m, 0]));
+    sendReliable(events);
+  });
+}
+
 function releaseAll() {
   if (pressedKeys.size || pressedButtons.size) sendReliable([['r']]);
   pressedKeys.clear();
@@ -612,11 +661,31 @@ function attachInput() {
     e.stopPropagation();
     if (down) pressedKeys.add(e.code);
     else if (!pressedKeys.delete(e.code)) return;
+    // Pasting files copied here: the keystroke waits until they are in the
+    // remote clipboard.
+    const paste = (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) || (e.code === 'Insert' && e.shiftKey);
+    if (down && paste && !heldPaste && clip.undelivered) {
+      holdPaste(e);
+      return;
+    }
+    if (heldPaste?.code === e.code) {
+      if (!down) heldPaste.released = true;
+      return;
+    }
     sendReliable([['k', e.code, down ? 1 : 0]]);
   };
   window.addEventListener('keydown', onKey(true), true);
   window.addEventListener('keyup', onKey(false), true);
-  window.addEventListener('blur', releaseAll);
+  window.addEventListener('blur', () => {
+    releaseAll();
+    // Leaving the window, maybe to paste here what was copied over there.
+    if (clip.inbox && clip.inbox.total <= AUTO_FETCH_BYTES) clip.fetch();
+  });
+  window.addEventListener('focus', () => {
+    // Back in the window: small copied files go over there in advance.
+    const out = clip.pendingOut;
+    if (out && out.total <= AUTO_PUSH_BYTES && canControl()) clip.push();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) releaseAll();
   });
@@ -687,9 +756,10 @@ function attachToolbarAutoHide() {
 // ───────────────────────────── boot ─────────────────────────────
 
 api.on('session:ended', ({ reason }) => showEnded(reason));
-api.on('clipboard:local', (text) => {
-  if (st.clipboard && st.connected && init?.caps?.clipboard) rtc?.sendControl({ type: 'clipboard', text });
+api.on('clipboard:local', (payload) => {
+  if (st.connected) clip.local(payload);
 });
+api.on('clipboard:ready', () => toast(t('viewer.clipFilesReady'), { type: 'success' }));
 
 init = await api.invoke('session:init');
 setLanguage(init.lang);

@@ -12,6 +12,7 @@ const INVOKE = new Set([
   'session:init', 'viewer:end', 'viewer:reconnect', 'viewer:fullscreen', 'viewer:set-clipboard', 'viewer:set-prefs',
   'host:consent', 'host:displays', 'host:end',
   'files:begin', 'files:end', 'files:show',
+  'clipboard:current', 'clipboard:list', 'clipboard:read', 'clipboard:expect',
   'e2e:cursor',
 ]);
 
@@ -22,7 +23,7 @@ const SEND = new Set([
 
 const RECEIVE = new Set([
   'app:state', 'app:navigate', 'app:deeplink', 'connect:status',
-  'session:signal', 'session:ended', 'session:state', 'clipboard:local',
+  'session:signal', 'session:ended', 'session:state', 'clipboard:local', 'clipboard:ready',
 ]);
 
 // Host window only: a direct line to the input helper process (remote mouse
