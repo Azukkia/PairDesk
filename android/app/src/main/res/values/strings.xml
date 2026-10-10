@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">PairDesk</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_back">Back</string>
+    <string name="common_save">Save</string>
+    <string name="common_remove">Remove</string>
+
+    <!-- Network status -->
+    <string name="status_online">Online</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_offline">Offline</string>
+    <string name="status_error">Server unreachable</string>
+    <string name="status_online_detail">Ready to connect (secure connection)</string>
+    <string name="status_connecting_detail">Connecting to the PairDesk network…</string>
+    <string name="status_offline_detail">Offline — check your Internet connection</string>
+    <string name="status_id_taken">This ID is already used by another device on this server.</string>
+
+    <!-- Home -->
+    <string name="home_this_device">This phone</string>
+    <string name="home_incoming_desc">Give this ID and password to the partner who needs to connect to this phone.</string>
+    <string name="home_your_id">Your ID</string>
+    <string name="home_password">Password</string>
+    <string name="home_copy_id">Copy ID</string>
+    <string name="home_id_copied">ID copied</string>
+    <string name="home_show_password">Show password</string>
+    <string name="home_hide_password">Hide password</string>
+    <string name="home_new_password">Generate a new password</string>
+    <string name="home_incoming_disabled">Incoming connections are disabled in the settings.</string>
+    <string name="home_unattended_on">Unattended access enabled (permanent password)</string>
+    <string name="home_outgoing_title">Connect to a computer</string>
+    <string name="home_outgoing_desc">Enter the ID and the password shown by PairDesk on the computer.</string>
+    <string name="home_partner_id">Partner ID</string>
+    <string name="home_partner_password">Partner password</string>
+    <string name="home_password_saved_hint">Leave empty to use the remembered password</string>
+    <string name="home_remember">Remember the password</string>
+    <string name="home_control">Control</string>
+    <string name="home_camera">Camera</string>
+    <string name="home_control_desc">Control this computer</string>
+    <string name="home_camera_desc">Use the phone as a webcam for this computer</string>
+    <string name="home_recents">Recent connections</string>
+    <string name="home_no_recents">No recent connections yet.</string>
+    <string name="home_recent_saved">Password remembered</string>
+    <string name="home_forget_recent">Remove from recent connections</string>
+    <string name="home_settings">Settings</string>
+
+    <!-- Outgoing connection -->
+    <string name="connect_title">Connecting to %1$s</string>
+    <string name="connect_searching">Looking for partner %1$s…</string>
+    <string name="connect_authenticating">Authenticating…</string>
+    <string name="connect_authenticated">Password accepted…</string>
+    <string name="connect_waiting_approval">Waiting for your partner to accept…</string>
+
+    <!-- Connection errors (same wording as the desktop app) -->
+    <string name="error_offline">Your partner is not connected to PairDesk, or the ID is wrong.</string>
+    <string name="error_network">Cannot reach the PairDesk network. Check your Internet connection.</string>
+    <string name="error_auth">Wrong password.</string>
+    <string name="error_need_password">Password required.</string>
+    <string name="error_locked">Too many failed attempts: your partner is temporarily locked. Try again in %1$s s.</string>
+    <string name="error_busy">Your partner is already in a session with someone else.</string>
+    <string name="error_version">Incompatible versions: update PairDesk on both devices.</string>
+    <string name="error_disabled">Your partner does not accept incoming connections.</string>
+    <string name="error_declined">Your partner declined the connection.</string>
+    <string name="error_timeout">Your partner did not answer in time.</string>
+    <string name="error_rejected">Connection refused.</string>
+    <string name="error_protocol">Protocol error. Please update PairDesk.</string>
+    <string name="error_cancelled">Connection cancelled.</string>
+    <string name="error_self">This is the ID of this phone.</string>
+    <string name="error_invalid">A PairDesk ID has 9 digits.</string>
+    <string name="error_camera_unsupported">PairDesk on this computer cannot receive the camera: update it to version 1.2 or later.</string>
+    <string name="error_unsupported">Your partner does not support this kind of session.</string>
+    <string name="error_unknown">An error occurred (%1$s).</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_identity">Identity</string>
+    <string name="settings_display_name">Display name</string>
+    <string name="settings_display_name_hint">Shown to your partners (default: %1$s)</string>
+    <string name="settings_permanent_title">Permanent password</string>
+    <string name="settings_permanent_desc">A personal password to connect to this phone without reading the temporary password (unattended access).</string>
+    <string name="settings_permanent_enabled">A permanent password is set.</string>
+    <string name="settings_permanent_disabled">No permanent password.</string>
+    <string name="settings_permanent_set">Set</string>
+    <string name="settings_permanent_change">Change</string>
+    <string name="settings_permanent_new">New password</string>
+    <string name="settings_permanent_confirm">Confirm the password</string>
+    <string name="settings_permanent_too_short">At least %1$d characters.</string>
+    <string name="settings_permanent_mismatch">The passwords do not match.</string>
+    <string name="settings_permanent_failed">The password could not be stored securely.</string>
+    <string name="settings_network">Network</string>
+    <string name="settings_network_public">Public relays (default)</string>
+    <string name="settings_network_public_desc">Works without configuration. The relays only see encrypted data.</string>
+    <string name="settings_network_server">Private PairDesk server</string>
+    <string name="settings_network_server_desc">Your own PairDesk server (also provides TURN relays).</string>
+    <string name="settings_server_url">Server URL</string>
+    <string name="settings_server_url_invalid">Enter a URL starting with wss:// (or ws://).</string>
+    <string name="settings_apply">Apply</string>
+    <string name="settings_incoming">Incoming connections</string>
+    <string name="settings_allow_incoming">Allow incoming connections</string>
+    <string name="settings_allow_incoming_desc">Partners who know the ID and the password can view the screen of this phone, after your approval.</string>
+    <string name="settings_allow_control">Allow control of this phone</string>
+    <string name="settings_allow_control_desc">Partners may tap and type on this phone. Android requires the PairDesk accessibility service to be enabled.</string>
+    <string name="settings_open_accessibility">Open accessibility settings</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">PairDesk %1$s for Android</string>
+
+    <!-- Sessions (placeholder screens, completed by later versions) -->
+    <string name="session_viewer_title">%1$s</string>
+    <string name="session_camera_title">Camera → %1$s</string>
+    <string name="session_negotiating">Establishing the connection…</string>
+    <string name="session_connected">Connected</string>
+    <string name="session_reconnecting">Connection lost, reconnecting…</string>
+    <string name="session_failed">The connection failed.</string>
+    <string name="session_ended">Session ended.</string>
+    <string name="session_end">End session</string>
+    <string name="session_back_home">Back to home</string>
+    <string name="session_placeholder_viewer">The screen of the computer will be displayed here.</string>
+    <string name="session_placeholder_camera">The camera preview will be displayed here.</string>
+    <string name="session_placeholder_host">The screen of this phone will be shared from here.</string>
+
+    <!-- Incoming session -->
+    <string name="incoming_title">Connection request</string>
+    <string name="incoming_body">%1$s (%2$s) wants to connect to this phone.</string>
+    <string name="incoming_credential_temp">Authenticated with the temporary password.</string>
+    <string name="incoming_credential_perm">Authenticated with the permanent password.</string>
+    <string name="incoming_expires">The request expires in %1$d s.</string>
+    <string name="incoming_accept">Accept</string>
+    <string name="incoming_decline">Decline</string>
+    <string name="incoming_active">%1$s is connected to this phone.</string>
+    <string name="incoming_unknown_name">Unknown device</string>
+</resources>

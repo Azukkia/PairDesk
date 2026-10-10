@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Commun -->
+    <string name="common_cancel">Annuler</string>
+    <string name="common_close">Fermer</string>
+    <string name="common_retry">Réessayer</string>
+    <string name="common_back">Retour</string>
+    <string name="common_save">Enregistrer</string>
+    <string name="common_remove">Supprimer</string>
+
+    <!-- État du réseau -->
+    <string name="status_online">En ligne</string>
+    <string name="status_connecting">Connexion…</string>
+    <string name="status_offline">Hors ligne</string>
+    <string name="status_error">Serveur injoignable</string>
+    <string name="status_online_detail">Prêt à se connecter (connexion sécurisée)</string>
+    <string name="status_connecting_detail">Connexion au réseau PairDesk…</string>
+    <string name="status_offline_detail">Hors ligne — vérifiez votre connexion Internet</string>
+    <string name="status_id_taken">Cet ID est déjà utilisé par un autre appareil sur ce serveur.</string>
+
+    <!-- Accueil -->
+    <string name="home_this_device">Ce téléphone</string>
+    <string name="home_incoming_desc">Communiquez cet ID et ce mot de passe au partenaire qui doit se connecter à ce téléphone.</string>
+    <string name="home_your_id">Votre ID</string>
+    <string name="home_password">Mot de passe</string>
+    <string name="home_copy_id">Copier l\'ID</string>
+    <string name="home_id_copied">ID copié</string>
+    <string name="home_show_password">Afficher le mot de passe</string>
+    <string name="home_hide_password">Masquer le mot de passe</string>
+    <string name="home_new_password">Générer un nouveau mot de passe</string>
+    <string name="home_incoming_disabled">Les connexions entrantes sont désactivées dans les paramètres.</string>
+    <string name="home_unattended_on">Accès non surveillé activé (mot de passe permanent)</string>
+    <string name="home_outgoing_title">Se connecter à un ordinateur</string>
+    <string name="home_outgoing_desc">Saisissez l\'ID et le mot de passe affichés par PairDesk sur l\'ordinateur.</string>
+    <string name="home_partner_id">ID du partenaire</string>
+    <string name="home_partner_password">Mot de passe du partenaire</string>
+    <string name="home_password_saved_hint">Laissez vide pour utiliser le mot de passe mémorisé</string>
+    <string name="home_remember">Mémoriser le mot de passe</string>
+    <string name="home_control">Contrôler</string>
+    <string name="home_camera">Caméra</string>
+    <string name="home_control_desc">Contrôler cet ordinateur</string>
+    <string name="home_camera_desc">Utiliser le téléphone comme webcam pour cet ordinateur</string>
+    <string name="home_recents">Connexions récentes</string>
+    <string name="home_no_recents">Aucune connexion récente pour le moment.</string>
+    <string name="home_recent_saved">Mot de passe mémorisé</string>
+    <string name="home_forget_recent">Retirer des connexions récentes</string>
+    <string name="home_settings">Paramètres</string>
+
+    <!-- Connexion sortante -->
+    <string name="connect_title">Connexion à %1$s</string>
+    <string name="connect_searching">Recherche du partenaire %1$s…</string>
+    <string name="connect_authenticating">Authentification…</string>
+    <string name="connect_authenticated">Mot de passe accepté…</string>
+    <string name="connect_waiting_approval">En attente de l\'acceptation par le partenaire…</string>
+
+    <!-- Erreurs de connexion (mêmes textes que l'application de bureau) -->
+    <string name="error_offline">Le partenaire n\'est pas connecté à PairDesk, ou l\'ID est incorrect.</string>
+    <string name="error_network">Impossible de joindre le réseau PairDesk. Vérifiez votre connexion Internet.</string>
+    <string name="error_auth">Mot de passe incorrect.</string>
+    <string name="error_need_password">Mot de passe requis.</string>
+    <string name="error_locked">Trop de tentatives échouées : le partenaire est temporairement verrouillé. Réessayez dans %1$s s.</string>
+    <string name="error_busy">Le partenaire est déjà en session avec quelqu’un d’autre.</string>
+    <string name="error_version">Versions incompatibles : mettez PairDesk à jour sur les deux appareils.</string>
+    <string name="error_disabled">Le partenaire n\'accepte pas les connexions entrantes.</string>
+    <string name="error_declined">Le partenaire a refusé la connexion.</string>
+    <string name="error_timeout">Le partenaire n\'a pas répondu à temps.</string>
+    <string name="error_rejected">Connexion refusée.</string>
+    <string name="error_protocol">Erreur de protocole. Mettez PairDesk à jour.</string>
+    <string name="error_cancelled">Connexion annulée.</string>
+    <string name="error_self">Il s’agit de l’ID de ce téléphone.</string>
+    <string name="error_invalid">Un ID PairDesk comporte 9 chiffres.</string>
+    <string name="error_camera_unsupported">PairDesk sur cet ordinateur ne peut pas recevoir la caméra : mettez-le à jour (version 1.2 ou ultérieure).</string>
+    <string name="error_unsupported">Le partenaire ne prend pas en charge ce type de session.</string>
+    <string name="error_unknown">Une erreur est survenue (%1$s).</string>
+
+    <!-- Paramètres -->
+    <string name="settings_title">Paramètres</string>
+    <string name="settings_identity">Identité</string>
+    <string name="settings_display_name">Nom affiché</string>
+    <string name="settings_display_name_hint">Visible par vos partenaires (par défaut : %1$s)</string>
+    <string name="settings_permanent_title">Mot de passe permanent</string>
+    <string name="settings_permanent_desc">Un mot de passe personnel pour se connecter à ce téléphone sans lire le mot de passe temporaire (accès non surveillé).</string>
+    <string name="settings_permanent_enabled">Un mot de passe permanent est défini.</string>
+    <string name="settings_permanent_disabled">Aucun mot de passe permanent.</string>
+    <string name="settings_permanent_set">Définir</string>
+    <string name="settings_permanent_change">Modifier</string>
+    <string name="settings_permanent_new">Nouveau mot de passe</string>
+    <string name="settings_permanent_confirm">Confirmez le mot de passe</string>
+    <string name="settings_permanent_too_short">Au moins %1$d caractères.</string>
+    <string name="settings_permanent_mismatch">Les mots de passe ne correspondent pas.</string>
+    <string name="settings_permanent_failed">Le mot de passe n\'a pas pu être enregistré de façon sécurisée.</string>
+    <string name="settings_network">Réseau</string>
+    <string name="settings_network_public">Relais publics (par défaut)</string>
+    <string name="settings_network_public_desc">Fonctionne sans configuration. Les relais ne voient que des données chiffrées.</string>
+    <string name="settings_network_server">Serveur PairDesk privé</string>
+    <string name="settings_network_server_desc">Votre propre serveur PairDesk (fournit aussi des relais TURN).</string>
+    <string name="settings_server_url">URL du serveur</string>
+    <string name="settings_server_url_invalid">Saisissez une URL commençant par wss:// (ou ws://).</string>
+    <string name="settings_apply">Appliquer</string>
+    <string name="settings_incoming">Connexions entrantes</string>
+    <string name="settings_allow_incoming">Autoriser les connexions entrantes</string>
+    <string name="settings_allow_incoming_desc">Les partenaires qui connaissent l\'ID et le mot de passe peuvent voir l\'écran de ce téléphone, après votre accord.</string>
+    <string name="settings_allow_control">Autoriser le contrôle de ce téléphone</string>
+    <string name="settings_allow_control_desc">Les partenaires peuvent toucher l\'écran et saisir du texte sur ce téléphone. Android exige d\'activer le service d\'accessibilité PairDesk.</string>
+    <string name="settings_open_accessibility">Ouvrir les paramètres d\'accessibilité</string>
+    <string name="settings_about">À propos</string>
+    <string name="settings_version">PairDesk %1$s pour Android</string>
+
+    <!-- Sessions (écrans provisoires, complétés par les versions suivantes) -->
+    <string name="session_viewer_title">%1$s</string>
+    <string name="session_camera_title">Caméra → %1$s</string>
+    <string name="session_negotiating">Établissement de la connexion…</string>
+    <string name="session_connected">Connecté</string>
+    <string name="session_reconnecting">Connexion perdue, reconnexion…</string>
+    <string name="session_failed">La connexion a échoué.</string>
+    <string name="session_ended">Session terminée.</string>
+    <string name="session_end">Terminer la session</string>
+    <string name="session_back_home">Retour à l\'accueil</string>
+    <string name="session_placeholder_viewer">L\'écran de l\'ordinateur s\'affichera ici.</string>
+    <string name="session_placeholder_camera">L\'aperçu de la caméra s\'affichera ici.</string>
+    <string name="session_placeholder_host">Le partage de l\'écran de ce téléphone démarrera ici.</string>
+
+    <!-- Session entrante -->
+    <string name="incoming_title">Demande de connexion</string>
+    <string name="incoming_body">%1$s (%2$s) souhaite se connecter à ce téléphone.</string>
+    <string name="incoming_credential_temp">Authentifié avec le mot de passe temporaire.</string>
+    <string name="incoming_credential_perm">Authentifié avec le mot de passe permanent.</string>
+    <string name="incoming_expires">La demande expire dans %1$d s.</string>
+    <string name="incoming_accept">Accepter</string>
+    <string name="incoming_decline">Refuser</string>
+    <string name="incoming_active">%1$s est connecté à ce téléphone.</string>
+    <string name="incoming_unknown_name">Appareil inconnu</string>
+</resources>
