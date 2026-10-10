@@ -105,6 +105,46 @@ jobs:
             dist/latest.yml
           retention-days: 90
 
+  android-signing:
+    name: Android signing key
+    # Repository secrets (see README): the key that signs the released APKs.
+    # Only its public certificate fingerprint is printed.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open the key with the repository secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No Android signing key in the repository secrets: released APKs get a throwaway key."
+            exit 0
+          fi
+          for v in KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret ANDROID_$v is missing"; exit 1; fi
+          done
+          ks="$RUNNER_TEMP/pairdesk.keystore"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$ks"
+          trap 'rm -f "$ks"' EXIT
+          info=$(keytool -list -v -keystore "$ks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS")
+          # In a PKCS12 keystore the key opens with the keystore password:
+          # the Android build needs both secrets to be the same.
+          type=$(keytool -list -keystore "$ks" -storepass "$KEYSTORE_PASSWORD" | grep -i 'Keystore type')
+          if echo "$type" | grep -qi 'PKCS12' && [ "$KEY_PASSWORD" != "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::ANDROID_KEY_PASSWORD must be the same as ANDROID_KEYSTORE_PASSWORD"
+            exit 1
+          fi
+          # The key itself must open with its password (not only the keystore).
+          keytool -importkeystore -srckeystore "$ks" -srcstorepass "$KEYSTORE_PASSWORD" -srcalias "$KEY_ALIAS" -srckeypass "$KEY_PASSWORD" \
+            -destkeystore "$RUNNER_TEMP/check.p12" -deststoretype PKCS12 -deststorepass checkcheck -noprompt > /dev/null
+          rm -f "$RUNNER_TEMP/check.p12"
+          echo "$info" | grep -E 'SHA256:'
+          echo "Android signing key OK"
+
   server-image:
     name: Server Docker image
     runs-on: ubuntu-latest
