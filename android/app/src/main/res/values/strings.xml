@@ -19,6 +19,8 @@
     <string name="status_connecting_detail">Connecting to the PairDesk network…</string>
     <string name="status_offline_detail">Offline — check your Internet connection</string>
     <string name="status_id_taken">This ID is already used by another device on this server.</string>
+    <string name="status_via_relays">Public relays: %1$d connected</string>
+    <string name="status_via_server">Server: %1$s</string>
 
     <!-- Home -->
     <string name="home_this_device">This phone</string>
@@ -54,6 +56,7 @@
     <string name="connect_authenticating">Authenticating…</string>
     <string name="connect_authenticated">Password accepted…</string>
     <string name="connect_waiting_approval">Waiting for your partner to accept…</string>
+    <string name="connect_failed_title">Connection failed</string>
 
     <!-- Connection errors (same wording as the desktop app) -->
     <string name="error_offline">Your partner is not connected to PairDesk, or the ID is wrong.</string>
@@ -91,6 +94,7 @@
     <string name="settings_permanent_too_short">At least %1$d characters.</string>
     <string name="settings_permanent_mismatch">The passwords do not match.</string>
     <string name="settings_permanent_failed">The password could not be stored securely.</string>
+    <string name="settings_permanent_saving">Saving…</string>
     <string name="settings_network">Network</string>
     <string name="settings_network_public">Public relays (default)</string>
     <string name="settings_network_public_desc">Works without configuration. The relays only see encrypted data.</string>
@@ -116,6 +120,9 @@
     <string name="session_reconnecting">Connection lost, reconnecting…</string>
     <string name="session_failed">The connection failed.</string>
     <string name="session_ended">Session ended.</string>
+    <string name="session_ended_by_peer">Your partner ended the session.</string>
+    <string name="session_end_confirm_title">End the session?</string>
+    <string name="session_end_confirm_body">The connection with %1$s will be closed.</string>
     <string name="session_end">End session</string>
     <string name="session_back_home">Back to home</string>
     <string name="session_placeholder_viewer">The screen of the computer will be displayed here.</string>
@@ -132,4 +139,5 @@
     <string name="incoming_decline">Decline</string>
     <string name="incoming_active">%1$s is connected to this phone.</string>
     <string name="incoming_unknown_name">Unknown device</string>
+    <string name="incoming_title_active">Incoming session</string>
 </resources>

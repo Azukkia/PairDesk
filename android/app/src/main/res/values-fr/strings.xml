@@ -17,6 +17,8 @@
     <string name="status_connecting_detail">Connexion au réseau PairDesk…</string>
     <string name="status_offline_detail">Hors ligne — vérifiez votre connexion Internet</string>
     <string name="status_id_taken">Cet ID est déjà utilisé par un autre appareil sur ce serveur.</string>
+    <string name="status_via_relays">Relais publics : %1$d connecté(s)</string>
+    <string name="status_via_server">Serveur : %1$s</string>
 
     <!-- Accueil -->
     <string name="home_this_device">Ce téléphone</string>
@@ -52,6 +54,7 @@
     <string name="connect_authenticating">Authentification…</string>
     <string name="connect_authenticated">Mot de passe accepté…</string>
     <string name="connect_waiting_approval">En attente de l\'acceptation par le partenaire…</string>
+    <string name="connect_failed_title">Connexion impossible</string>
 
     <!-- Erreurs de connexion (mêmes textes que l'application de bureau) -->
     <string name="error_offline">Le partenaire n\'est pas connecté à PairDesk, ou l\'ID est incorrect.</string>
@@ -89,6 +92,7 @@
     <string name="settings_permanent_too_short">Au moins %1$d caractères.</string>
     <string name="settings_permanent_mismatch">Les mots de passe ne correspondent pas.</string>
     <string name="settings_permanent_failed">Le mot de passe n\'a pas pu être enregistré de façon sécurisée.</string>
+    <string name="settings_permanent_saving">Enregistrement…</string>
     <string name="settings_network">Réseau</string>
     <string name="settings_network_public">Relais publics (par défaut)</string>
     <string name="settings_network_public_desc">Fonctionne sans configuration. Les relais ne voient que des données chiffrées.</string>
@@ -114,6 +118,9 @@
     <string name="session_reconnecting">Connexion perdue, reconnexion…</string>
     <string name="session_failed">La connexion a échoué.</string>
     <string name="session_ended">Session terminée.</string>
+    <string name="session_ended_by_peer">Le partenaire a mis fin à la session.</string>
+    <string name="session_end_confirm_title">Terminer la session ?</string>
+    <string name="session_end_confirm_body">La connexion avec %1$s sera fermée.</string>
     <string name="session_end">Terminer la session</string>
     <string name="session_back_home">Retour à l\'accueil</string>
     <string name="session_placeholder_viewer">L\'écran de l\'ordinateur s\'affichera ici.</string>
@@ -130,4 +137,5 @@
     <string name="incoming_decline">Refuser</string>
     <string name="incoming_active">%1$s est connecté à ce téléphone.</string>
     <string name="incoming_unknown_name">Appareil inconnu</string>
+    <string name="incoming_title_active">Session entrante</string>
 </resources>
