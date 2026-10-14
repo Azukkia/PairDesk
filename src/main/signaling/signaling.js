@@ -196,7 +196,12 @@ export class Signaling extends EventEmitter {
     const ya = unb64(data.ya);
     if (!ya || ya.length !== 32) return this.#deny(from, sid, 'protocol');
     const credentials = this.getCredentials();
-    if (!credentials.length) return this.#deny(from, sid, 'disabled');
+    // No password at all on this computer (neither a temporary nor a
+    // readable personal one): say so, rather than "incoming disabled".
+    if (!credentials.length) {
+      this.log?.warn('[signaling] incoming connection refused: no active password');
+      return this.#deny(from, sid, 'no-password');
+    }
 
     const ci = channelIdentifier(from, this.myId);
     const candidates = [];
@@ -263,6 +268,8 @@ export class Signaling extends EventEmitter {
       peerName: typeof intro.name === 'string' ? intro.name.slice(0, 64) : '',
       peerPlatform: typeof intro.platform === 'string' ? intro.platform.slice(0, 16) : '',
       peerVersion: typeof intro.appVersion === 'string' ? intro.appVersion.slice(0, 32) : '',
+      // 'camera': a phone streams its camera to this computer (1.2+).
+      kind: intro.kind === 'camera' ? 'camera' : 'control',
       startedAt: Date.now(),
     };
     this.sessions.set(session.sid, session);

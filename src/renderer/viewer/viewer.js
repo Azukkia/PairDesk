@@ -1,8 +1,9 @@
 // Viewer window (controller side): shows the partner's screen and forwards
 // mouse and keyboard input.
 
-import { api, h, clear, icon, t, setLanguage, toast, showMenu } from '../common/ui.js';
+import { api, h, clear, icon, t, setLanguage, toast, showMenu, formatBytes } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
+import { ClipboardBridge } from '../common/clipboard-bridge.js';
 import { createRemoteCursor } from './remote-cursor.js';
 import { KEYMAP, KEY_COMBOS } from '../shared/keymap.js';
 import { formatId } from '../shared/protocol.js';
@@ -32,8 +33,21 @@ const pressedButtons = new Set();
 let transfers = null;
 let chat = null;
 let remoteCursor = null;
+// Copied files are fetched automatically below these sizes, on request above.
+const AUTO_PUSH_BYTES = 50 * 1024 * 1024;
+const AUTO_FETCH_BYTES = 200 * 1024 * 1024;
+const clip = new ClipboardBridge({
+  rtc: () => rtc,
+  peerVersion: () => init?.peer?.version,
+  enabled: () => st.clipboard && Boolean(init?.caps?.clipboard) && !st.ended,
+  files: () => Boolean(init?.caps?.files),
+  view: (name, size, direction) => transfers.add(name, size, direction),
+});
 
 const canControl = () => st.connected && !st.ended && Boolean(init?.caps?.control);
+// The remote is a phone (PairDesk for Android): text instead of key codes,
+// and its navigation buttons in the toolbar.
+const androidHost = () => init?.peer?.platform === 'android';
 
 // ───────────────────────────── UI ─────────────────────────────
 
@@ -51,9 +65,17 @@ function buildUI() {
   ui.viewOnly = h('span', { class: 'badge warning', title: t('viewer.viewOnlyHelp'), hidden: true }, icon('eye', 'sm'), t('viewer.viewOnly'));
 
   ui.monitorBtn = h('button', { class: 'tool-label', id: 'monitor-button', hidden: true, onclick: (e) => monitorMenu(e.currentTarget) }, icon('monitor', 'sm'), h('span'), icon('chevronDown', 'sm'));
+  // One click to the next screen, without opening the menu.
+  ui.nextScreenBtn = toolButton('swap', t('viewer.nextScreen'), () => nextScreen(), 'next-screen-button');
   ui.scaleBtn = toolButton('fit', t('viewer.original'), () => setScale(st.scale === 'fit' ? 'original' : 'fit'), 'scale-button');
   ui.qualityBtn = toolButton('gauge', t('viewer.quality'), (b) => qualityMenu(b), 'quality-button');
   ui.keysBtn = toolButton('keyboard', t('viewer.actions'), (b) => keysMenu(b), 'keys-button');
+  const phoneAction = (action) => () => {
+    if (canControl()) sendReliable([['a', action]]);
+  };
+  ui.backBtn = toolButton('back', t('viewer.androidBack'), phoneAction('back'), 'android-back');
+  ui.homeBtn = toolButton('home', t('viewer.androidHome'), phoneAction('home'), 'android-home');
+  ui.recentsBtn = toolButton('square', t('viewer.androidRecents'), phoneAction('recents'), 'android-recents');
   ui.clipBtn = toolButton('clipboard', t('viewer.clipboard'), () => setClipboard(!st.clipboard), 'clipboard-button');
   ui.fileBtn = toolButton('upload', t('viewer.sendFile'), () => ui.fileInput.click(), 'file-button');
   ui.chatBtn = toolButton('message', t('viewer.chat'), () => toggleChat(), 'chat-button');
@@ -64,7 +86,7 @@ function buildUI() {
 
   ui.topbar = h('header', { class: 'topbar' },
     h('div', { class: 'peer' }, ui.dot, ui.name, ui.id, ui.viewOnly, ui.delay, ui.stats),
-    h('div', { class: 'tools' }, ui.monitorBtn, ui.scaleBtn, ui.qualityBtn, ui.keysBtn, h('span', { class: 'sep' }),
+    h('div', { class: 'tools' }, ui.monitorBtn, ui.nextScreenBtn, ui.backBtn, ui.homeBtn, ui.recentsBtn, ui.scaleBtn, ui.qualityBtn, ui.keysBtn, h('span', { class: 'sep' }),
       ui.clipBtn, ui.fileBtn, ui.chatBtn, ui.soundBtn, h('span', { class: 'sep' }), ui.fsBtn, ui.endBtn, ui.fileInput));
 
   ui.video = h('video', { id: 'remote-screen', autoplay: true, playsInline: true, muted: true });
@@ -73,13 +95,15 @@ function buildUI() {
   remoteCursor = createRemoteCursor(ui.video);
   ui.stage = h('main', { class: 'stage fit', tabindex: '0', id: 'stage' }, ui.video);
   ui.overlay = h('div', { class: 'overlay' });
-  ui.stage.append(ui.overlay);
+  // Why the remote mouse does nothing (Windows blocks injected input).
+  ui.notice = h('div', { class: 'notice', id: 'input-blocked', hidden: true, role: 'status' });
+  ui.stage.append(ui.overlay, ui.notice);
 
   chat = new ChatView({ onSend: (text) => rtc?.sendControl({ type: 'chat', text }) });
   ui.chat = h('aside', { class: 'chat-panel', hidden: true },
     h('header', null, t('chat.title'), h('button', { class: 'icon-btn', onclick: () => toggleChat(false) }, icon('x', 'sm'))),
     chat.list, chat.form);
-  ui.drop = h('div', { class: 'drop-hint', hidden: true }, t('viewer.dropHint'));
+  ui.drop = h('div', { class: 'drop-hint', hidden: true }, h('span', null, t('viewer.dropHint')));
   ui.hotzone = h('div', { class: 'hotzone' });
 
   clear(app, ui.topbar, ui.stage, ui.chat, ui.audio);
@@ -98,7 +122,8 @@ function refreshToolbar() {
   ui.viewOnly.hidden = Boolean(caps.control) || !live;
   ui.scaleBtn.hidden = !live;
   ui.qualityBtn.hidden = !live;
-  ui.keysBtn.hidden = !caps.control || !live;
+  ui.keysBtn.hidden = !caps.control || !live || androidHost();
+  for (const btn of [ui.backBtn, ui.homeBtn, ui.recentsBtn]) btn.hidden = !caps.control || !live || !androidHost();
   ui.clipBtn.hidden = !caps.clipboard || !live;
   ui.clipBtn.classList.toggle('active', st.clipboard);
   ui.fileBtn.hidden = !caps.files || !live;
@@ -110,8 +135,12 @@ function refreshToolbar() {
   clear(ui.fsBtn, icon(st.fullscreen ? 'minimize' : 'maximize'));
   ui.fsBtn.title = st.fullscreen ? t('viewer.exitFullscreen') : t('viewer.fullscreen');
   ui.monitorBtn.hidden = st.displays.length < 2 || !live;
+  ui.nextScreenBtn.hidden = ui.monitorBtn.hidden;
   const idx = st.displays.findIndex((d) => d.id === st.current);
   ui.monitorBtn.children[1].textContent = t('viewer.monitorN', { n: idx >= 0 ? idx + 1 : 1 });
+  const next = st.displays.length ? ((idx >= 0 ? idx : 0) + 1) % st.displays.length : 0;
+  ui.nextScreenBtn.title = t('viewer.nextScreen', { n: next + 1 });
+  ui.nextScreenBtn.setAttribute('aria-label', ui.nextScreenBtn.title);
   ui.chatBtn.querySelector('.count-badge')?.remove();
   if (st.unread) ui.chatBtn.append(h('span', { class: 'count-badge' }, String(st.unread)));
   ui.chatBtn.classList.toggle('active', st.chatOpen);
@@ -164,10 +193,12 @@ function startSession() {
   lastMove = null;
   remoteCursor.reset();
   rtc = new RtcSession({ role: 'viewer', iceServers: init.iceServers });
-  rtc.acceptFile = async ({ name, size }) => {
-    const res = await api.invoke('files:begin', { name, size });
+  rtc.acceptFile = async ({ name, size, clip: clipInfo }) => {
+    const res = await api.invoke('files:begin', { name, size, clip: clipInfo });
     if (!res.ok) return res;
-    return { ...res, view: transfers.add(res.name, size, 'in') };
+    // Clipboard images arrive silently; copied files show their progress.
+    const view = res.clip === 'image' ? { update() {} } : transfers.add(res.name, size, 'in');
+    return { ...res, view };
   };
   rtc.addEventListener('track', ({ detail: event }) => {
     const { track } = event;
@@ -185,6 +216,7 @@ function startSession() {
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
   rtc.addEventListener('control-open', () => {
     rtc.sendControl({ type: 'hello', quality: st.quality, clipboard: st.clipboard });
+    clip.sendCurrent(); // copy before connecting, paste over there
   });
   rtc.addEventListener('control-close', () => {
     if (!st.ended) onConnectionState('disconnected');
@@ -282,10 +314,26 @@ function onControl(msg) {
       }
       break;
     case 'clipboard':
-      if (st.clipboard && typeof msg.text === 'string') api.send('clipboard:remote', msg.text);
+      clip.onControl(msg);
+      // Big copied files over there: fetched only when asked.
+      if (clip.inbox && clip.inbox.total > AUTO_FETCH_BYTES) {
+        toast(t('viewer.clipBigFiles', { size: formatBytes(clip.inbox.total) }), {
+          type: 'info', action: { label: t('viewer.clipFetch'), run: () => clip.fetch() },
+        });
+      }
+      break;
+    case 'clipboard-fetch':
+    case 'clipboard-files':
+    case 'clipboard-ready':
+      clip.onControl(msg);
       break;
     case 'cursor':
       remoteCursor.handle(msg);
+      break;
+    case 'input-blocked':
+      ui.notice.hidden = !msg.reason;
+      ui.notice.dataset.kind = msg.reason ? 'blocked' : '';
+      ui.notice.textContent = msg.reason === 'secure-desktop' ? t('viewer.blockedSecure') : msg.reason ? t('viewer.blockedElevated') : '';
       break;
     case 'host-stats': {
       const num = (v) => (Number.isFinite(v) ? v : null);
@@ -304,11 +352,30 @@ function onControl(msg) {
   }
 }
 
+// A picture that stops changing usually means a sleeping (or locked) remote
+// screen: ask the host to wake it, and say so if it does not come back.
+let frozenFor = 0;
+function watchFrozen(s) {
+  if (!st.hadVideo || rtc?.pc.connectionState !== 'connected' || s.fps == null) return;
+  frozenFor = s.fps > 0 ? 0 : frozenFor + 1;
+  if (frozenFor === 3) rtc.sendControl({ type: 'wake' });
+  const show = frozenFor >= 6;
+  if (show && ui.notice.hidden) {
+    ui.notice.textContent = t('viewer.frozen');
+    ui.notice.hidden = false;
+    ui.notice.dataset.kind = 'frozen';
+  } else if (!show && ui.notice.dataset.kind === 'frozen') {
+    ui.notice.hidden = true;
+    ui.notice.dataset.kind = '';
+  }
+}
+
 function startStats() {
   clearInterval(timers.stats);
   timers.stats = setInterval(async () => {
     if (!rtc || st.ended) return;
     const s = await rtc.stats();
+    watchFrozen(s);
     // Estimated screen-to-screen delay: half the round trip + what the host
     // reports (encoding, send queue) + what happens here (buffer, decoding)
     // + about one frame to display.
@@ -338,6 +405,13 @@ function startStats() {
 }
 
 // ───────────────────────────── toolbar actions ─────────────────────────────
+
+function nextScreen() {
+  if (st.displays.length < 2) return;
+  const idx = st.displays.findIndex((d) => d.id === st.current);
+  const next = st.displays[((idx >= 0 ? idx : 0) + 1) % st.displays.length];
+  rtc?.sendControl({ type: 'select-display', displayId: next.id });
+}
 
 function monitorMenu(anchor) {
   showMenu(anchor, [{ title: t('viewer.monitor') }, ...st.displays.map((d, i) => ({
@@ -429,13 +503,17 @@ function toggleChat(open = !st.chatOpen) {
   refreshToolbar();
 }
 
-function sendFiles(files) {
+/** `at`: normalized point of the remote screen where the files were dropped. */
+function sendFiles(files, at = null) {
   if (!rtc || st.ended || !st.connected) return;
   if (!init.caps.files) {
     toast(t('viewer.filesDisabled'), { type: 'error' });
     return;
   }
-  for (const file of files) rtc.sendFile(file, transfers.add(file.name, file.size, 'out'));
+  const drop = at && canControl() && files.length <= 100
+    ? { id: Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join(''), x: at[0], y: at[1], n: files.length }
+    : null;
+  for (const file of files) rtc.sendFile(file, transfers.add(file.name, file.size, 'out'), { drop });
 }
 
 // ───────────────────────────── input capture ─────────────────────────────
@@ -493,6 +571,30 @@ function mapPoint(e, clamp = false) {
     y = Math.min(1, Math.max(0, y));
   }
   return [round4(x), round4(y)];
+}
+
+// Ctrl+V (or Shift+Insert) held while copied files travel to the remote clipboard.
+let heldPaste = null;
+function holdPaste(e) {
+  const mods = [];
+  if (e.ctrlKey) mods.push('ControlLeft');
+  if (e.metaKey) mods.push('MetaLeft');
+  if (e.shiftKey) mods.push('ShiftLeft');
+  heldPaste = { code: e.code, released: false };
+  const out = clip.undelivered;
+  toast(t('viewer.clipSending', { size: formatBytes(out.total || 0) }), { type: 'info' });
+  clip.push(out.cid).then((ok) => {
+    const held = heldPaste;
+    heldPaste = null;
+    if (!ok) toast(t('viewer.clipFailed'), { type: 'error' });
+    if (!ok || !held || !canControl()) return;
+    // The modifiers may have been released meanwhile: send the whole shortcut.
+    const missing = mods.filter((m) => ![...pressedKeys].some((k) => k.startsWith(m.replace('Left', ''))));
+    const events = [...missing.map((m) => ['k', m, 1]), ['k', held.code, 1]];
+    if (held.released || missing.length) events.push(['k', held.code, 0]);
+    events.push(...missing.reverse().map((m) => ['k', m, 0]));
+    sendReliable(events);
+  });
 }
 
 function releaseAll() {
@@ -564,16 +666,43 @@ function attachInput() {
 
   const onKey = (down) => (e) => {
     if (!canControl() || isTypingTarget(e.target)) return;
+    // A phone types characters, whatever its keyboard layout: send the text.
+    if (androidHost() && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (down) sendReliable([['t', e.key]]);
+      return;
+    }
     if (!KEYMAP[e.code]) return;
     e.preventDefault();
     e.stopPropagation();
     if (down) pressedKeys.add(e.code);
     else if (!pressedKeys.delete(e.code)) return;
+    // Pasting files copied here: the keystroke waits until they are in the
+    // remote clipboard.
+    const paste = (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) || (e.code === 'Insert' && e.shiftKey);
+    if (down && paste && !heldPaste && clip.undelivered) {
+      holdPaste(e);
+      return;
+    }
+    if (heldPaste?.code === e.code) {
+      if (!down) heldPaste.released = true;
+      return;
+    }
     sendReliable([['k', e.code, down ? 1 : 0]]);
   };
   window.addEventListener('keydown', onKey(true), true);
   window.addEventListener('keyup', onKey(false), true);
-  window.addEventListener('blur', releaseAll);
+  window.addEventListener('blur', () => {
+    releaseAll();
+    // Leaving the window, maybe to paste here what was copied over there.
+    if (clip.inbox && clip.inbox.total <= AUTO_FETCH_BYTES) clip.fetch();
+  });
+  window.addEventListener('focus', () => {
+    // Back in the window: small copied files go over there in advance.
+    const out = clip.pendingOut;
+    if (out && out.total <= AUTO_PUSH_BYTES && canControl()) clip.push();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) releaseAll();
   });
@@ -603,13 +732,23 @@ function attachDragDrop() {
       ui.drop.hidden = true;
     }
   });
-  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    // The remote pointer follows, to show where the files will land.
+    if (canControl() && ui.stage.contains(e.target)) {
+      const p = mapPoint(e);
+      if (p) sendMove(p[0], p[1]);
+    }
+  });
   window.addEventListener('drop', (e) => {
     e.preventDefault();
     depth = 0;
     ui.drop.hidden = true;
     const files = [...(e.dataTransfer?.files || [])];
-    if (files.length) sendFiles(files);
+    // Dropped on the remote screen: the files land at that spot over there
+    // (desktop, folder, application); elsewhere they go to its Downloads.
+    const at = ui.stage.contains(e.target) ? mapPoint(e) : null;
+    if (files.length) sendFiles(files, at);
   });
 }
 
@@ -634,9 +773,10 @@ function attachToolbarAutoHide() {
 // ───────────────────────────── boot ─────────────────────────────
 
 api.on('session:ended', ({ reason }) => showEnded(reason));
-api.on('clipboard:local', (text) => {
-  if (st.clipboard && st.connected && init?.caps?.clipboard) rtc?.sendControl({ type: 'clipboard', text });
+api.on('clipboard:local', (payload) => {
+  if (st.connected) clip.local(payload);
 });
+api.on('clipboard:ready', () => toast(t('viewer.clipFilesReady'), { type: 'success' }));
 
 init = await api.invoke('session:init');
 setLanguage(init.lang);

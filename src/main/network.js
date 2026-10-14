@@ -106,8 +106,8 @@ export class Network extends EventEmitter {
 
   // ───────────── host passwords ─────────────
 
-  async regeneratePassword() {
-    if (!this.settings.get('useRandomPassword')) {
+  async regeneratePassword({ force = false } = {}) {
+    if (!force && !this.settings.get('useRandomPassword')) {
       this.temp = { password: '', prs: null };
       this.emit('password', '');
       return '';
@@ -132,8 +132,16 @@ export class Network extends EventEmitter {
   credentials() {
     const creds = [];
     if (this.temp.prs) creds.push({ kind: 'temp', prs: this.temp.prs });
-    const perm = this.settings.unseal(this.settings.get('permanentPrs'));
+    const sealed = this.settings.get('permanentPrs');
+    const perm = this.settings.unseal(sealed);
     if (perm) creds.push({ kind: 'perm', prs: perm });
+    // A personal password that can no longer be read (e.g. the Windows
+    // profile's encryption changed) with the random password turned off
+    // would leave this computer unreachable: show a temporary one instead.
+    if (!creds.length && sealed && !perm && !this.temp.password) {
+      this.log.warn('[network] the personal password cannot be read: using a temporary password');
+      this.regeneratePassword({ force: true });
+    }
     return creds;
   }
 }

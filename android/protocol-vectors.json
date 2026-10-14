@@ -1,0 +1,97 @@
+{
+  "cpace": [
+    {
+      "password": "abc234",
+      "ctrlId": "123456789",
+      "hostId": "987654321",
+      "sid": "c2lkLXZlY3Rvci0wMDAwMDE",
+      "prs": "4c195af9117c722156cea477a3a8cec90344472934f91da225631ab741220e84",
+      "ci": "000000046374726c0000000931323334353637383900000004686f737400000009393837363534333231",
+      "generatorInput": "000000204c195af9117c722156cea477a3a8cec90344472934f91da225631ab741220e840000002a000000046374726c0000000931323334353637383900000004686f7374000000093938373635343332310000001763326c6b4c585a6c59335276636930774d4441774d4445",
+      "generator": "621f686315435774b217d5713c860b5fec109f32998655d039c6fb3d959a8b43",
+      "scalarA": "0ebb36bb286b35aaca1854fc44df7303b7c241914eab2fcadd1148e313f25a5f",
+      "scalarB": "0b96f20fa3177ca1e36c6fd0ad47ed190d2c2732fa192902f590118710bd2531",
+      "ya": "ace0879867e38f6b174ac452de6c61fd1d5cefe369961532eef19ce5271f6d72",
+      "yb": "f02f11e7fef74f1eff586bc1ab52718aff06673446d8e2d954fcf4f4f9116927",
+      "yaB64u": "rOCHmGfjj2sXSsRS3mxh_R1c7-NplhUy7vGc5ScfbXI",
+      "k": "4e919ddd148189f0a593a826f0079c22df5ace8c1030fe3090c49e99405cb335",
+      "transcript": "00000016506169724465736b2d76312d7472616e7363726970740000001763326c6b4c585a6c59335276636930774d4441774d4445000000093132333435363738390000000939383736353433323100000020ace0879867e38f6b174ac452de6c61fd1d5cefe369961532eef19ce5271f6d7200000020f02f11e7fef74f1eff586bc1ab52718aff06673446d8e2d954fcf4f4f9116927",
+      "tagKeyHost": "971e62ff818597f5282622b7cd4d77436895fc5275cb6a7850c4a183098be727",
+      "tagKeyCtrl": "f7ee3cc8b03bbee8ce81864540007033fc6744514a79b633d8bab5894be167fe",
+      "encHostToCtrl": "51ae65d12746db6f63d81920aafc806d0647e4d771799c4e77bb4e6f7154861d",
+      "encCtrlToHost": "2576fd45895c692a7243f1c6043bcb558c4b9cb433f117296cc3d42f24728370",
+      "hostTag": "e4cb2f063e690a7995721f17ccbb744d3f369f6e7d5afc83810ca4501e8af32a",
+      "ctrlTag": "ee6f71f89edf20cdc871d34fafde66fa89e97997b4ee6432dbd2ff3d1ef70aa7",
+      "sealedIntro": {
+        "n": 1,
+        "ct": "oo-EhL0RDBl-T3stvce7bMwrqTV_JTTss6syJjdmChHyKpYuyPnLV8hak2P7qS4KCfASfTUZn9w5abOna9V77DaZAuOlhmXCYfy7Bc5vqNclFff3rF4lYKQ",
+        "plaintext": "{\"type\":\"intro\",\"name\":\"Pixel\",\"platform\":\"android\",\"appVersion\":\"1.2.0\"}"
+      },
+      "sealedAccepted": {
+        "n": 1,
+        "ct": "gC392satAror8Z8emOoKg43WHCMyCOBmdcY6qoPRrB1TJXJ5-9Dyc-QeqssE1XXM-smka48uE2GKx4uyBPP2rwzlcU4cSJE",
+        "plaintext": "{\"type\":\"accepted\",\"name\":\"PC\",\"caps\":{\"control\":true}}"
+      }
+    },
+    {
+      "password": "  Mot de passé ",
+      "ctrlId": "555000111",
+      "hostId": "400200300",
+      "sid": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "prs": "6fd984806065ba9a23d0ed0ab7092d0fd9261eb820b018cdff73c6305b29a874",
+      "ci": "000000046374726c0000000935353530303031313100000004686f737400000009343030323030333030",
+      "generatorInput": "000000206fd984806065ba9a23d0ed0ab7092d0fd9261eb820b018cdff73c6305b29a8740000002a000000046374726c0000000935353530303031313100000004686f73740000000934303032303033303000000018414141414141414141414141414141414141414141414141",
+      "generator": "7a0e8d02d05b78348febf73b0c962b4be3fe242128e666fa99b253b6be1df079",
+      "scalarA": "03e2ed8395adff10e60e0d21c81b93e7f79a52262adc2ae5ec128ec37083c9c3",
+      "scalarB": "0630425486d71b4e2f284442889c54fdf3f85a187f59dbb35226aaf3fccd2cd2",
+      "ya": "c8d189774b2e3d75992241385e8c4fa5c4879a496cbc3fcc7515ea5542df173e",
+      "yb": "8c2b254ab12e7bf5e5b7afd9335c07bd533bd42f5d141c63ba7164d62ef6e334",
+      "yaB64u": "yNGJd0suPXWZIkE4XoxPpcSHmklsvD_MdRXqVULfFz4",
+      "k": "8a4f4c8d6ff78e6b2645e8e598a8e8035b16a6272a0626cd74ac046ad8475f22",
+      "transcript": "00000016506169724465736b2d76312d7472616e73637269707400000018414141414141414141414141414141414141414141414141000000093535353030303131310000000934303032303033303000000020c8d189774b2e3d75992241385e8c4fa5c4879a496cbc3fcc7515ea5542df173e000000208c2b254ab12e7bf5e5b7afd9335c07bd533bd42f5d141c63ba7164d62ef6e334",
+      "tagKeyHost": "9b45885495203357c582f29ca7c8350f269f9c0e5df8991b721a1024e55cea77",
+      "tagKeyCtrl": "73eacea649678f3cee3eeb72e9b8978bbab0ffdc97c7ff8a8e85c0ec1bc5ec7f",
+      "encHostToCtrl": "f44f5eebbd81453ae606d8247c4fd7546f3c4c93a8b8878075e980a01303e631",
+      "encCtrlToHost": "55c2f01d773d9d6bdec6ba5b5947677de6bf31adc0bd9e6fa58e021cdd4106e6",
+      "hostTag": "bb7c2284bc5ae152b98d7eaaf06934f14f5d2826f3f4376863ffd16c11d809b5",
+      "ctrlTag": "bedf9d105e246759a8f6d50d44be59f10a373d01679e8869e8cc5ee0bc135b69",
+      "sealedIntro": {
+        "n": 1,
+        "ct": "Y_pHCpRJjHt9lVJOcF6q8UNYbY2CJY_7YybwoXmSE2rctj19U3Pq3yaS4bK7QYQMjzWEOKlEE1CuH19t-peE7_h7wN-PIdFoWAKcxJ-dBDGYVkYf5pwoDpc",
+        "plaintext": "{\"type\":\"intro\",\"name\":\"Pixel\",\"platform\":\"android\",\"appVersion\":\"1.2.0\"}"
+      },
+      "sealedAccepted": {
+        "n": 1,
+        "ct": "3McATiGYsBpbON5atUbYekqxoVUM8gmpFQXzgE2_uK-RB6phktBkfs2aEhUxeH7s5_oZfz_3BIL3Hk7iwKnhPH8PGZw0j1g",
+        "plaintext": "{\"type\":\"accepted\",\"name\":\"PC\",\"caps\":{\"control\":true}}"
+      }
+    }
+  ],
+  "hashToRistretto": [
+    {
+      "msg": "",
+      "dst": "PairDesk-v1-CPace-ristretto255",
+      "point": "147f0f6d11e4be4805335c130c044a164f21ddb4c0bb0ffa7404c13765bf7303"
+    },
+    {
+      "msg": "abc",
+      "dst": "PairDesk-v1-CPace-ristretto255",
+      "point": "d2dd6c66cc1c9686a2be08972ba595e62dfd58faad7258119a0373058647df00"
+    },
+    {
+      "msg": "PairDesk",
+      "dst": "PairDesk-v1-CPace-ristretto255",
+      "point": "5637e7d41ae2d5a645f557e1259d01e30128ec3bcf9a3e1d9f9647269ba4ef6c"
+    }
+  ],
+  "mqttTopics": [
+    {
+      "id": "123456789",
+      "topic": "pairdesk/v1/fe3f7c4e024931265b43255c2f99448f"
+    },
+    {
+      "id": "987654321",
+      "topic": "pairdesk/v1/1a49ab7ffc6d2fe75dad0eef5d7897df"
+    }
+  ]
+}

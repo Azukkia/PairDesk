@@ -20,7 +20,11 @@ const PING_INTERVAL_MS = 250;
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 export class RtcSession extends EventTarget {
-  constructor({ role, iceServers }) {
+  /**
+   * `camera` (host only): a phone's camera session, the offer receives one
+   * video track and only the control channel exists (docs/PROTOCOL.md 6).
+   */
+  constructor({ role, iceServers, camera = false }) {
     super();
     this.role = role;
     this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 2 });
@@ -57,8 +61,12 @@ export class RtcSession extends EventTarget {
 
     if (role === 'host') {
       this.#adoptChannel(pc.createDataChannel('control', { ordered: true }));
-      this.#adoptChannel(pc.createDataChannel('input', { ordered: true }));
-      this.#adoptChannel(pc.createDataChannel('pointer', { ordered: false, maxRetransmits: 0 }));
+      if (camera) {
+        pc.addTransceiver('video', { direction: 'recvonly' });
+      } else {
+        this.#adoptChannel(pc.createDataChannel('input', { ordered: true }));
+        this.#adoptChannel(pc.createDataChannel('pointer', { ordered: false, maxRetransmits: 0 }));
+      }
       pc.onnegotiationneeded = () => this.#offer();
     }
     // Signaling messages are applied strictly one after the other.
@@ -234,11 +242,16 @@ export class RtcSession extends EventTarget {
     return promise;
   }
 
-  async sendFile(file, view) {
+  /**
+   * `drop`: {id, x, y, n} when the file was dropped at a point of the remote
+   * screen; `clip`: {cid, kind, rel, n} for clipboard content (1.2+).
+   * `file` only needs name, size and slice(start, end).arrayBuffer().
+   */
+  async sendFile(file, view, { drop = null, clip = null } = {}) {
     const fid = randomId();
     view.update({ status: 'pending' });
     const answer = this.#waitFor(fid, ['file-accept', 'file-reject'], 60_000);
-    this.sendControl({ type: 'file-offer', fid, name: file.name, size: file.size });
+    this.sendControl({ type: 'file-offer', fid, name: file.name, size: file.size, ...(drop ? { drop } : {}), ...(clip ? { clip } : {}) });
     const reply = await answer;
     if (reply.type !== 'file-accept') {
       view.update({ status: reply.type === 'file-reject' ? 'rejected' : 'failed' });
@@ -321,7 +334,7 @@ export class RtcSession extends EventTarget {
     const size = Number(msg.size);
     const name = String(msg.name || 'file').slice(0, 255);
     if (!msg.fid || !Number.isSafeInteger(size) || size < 0) return;
-    const res = await this.acceptFile({ name, size });
+    const res = await this.acceptFile({ name, size, drop: msg.drop, clip: msg.clip });
     if (!res.ok) {
       this.sendControl({ type: 'file-reject', fid: msg.fid });
       return;

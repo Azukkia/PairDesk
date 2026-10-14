@@ -16,7 +16,7 @@ export function createTray({ appPath, t, id, onOpen, onCheckUpdates, onQuit }) {
       { label: translate('tray.open'), click: onOpen },
       { type: 'separator' },
       { label: translate('tray.id', { id: formatId(id) }), enabled: false },
-      { label: translate('tray.copyId'), click: () => clipboard.writeText(id) },
+      { label: translate('tray.copyId'), click: () => clipboard.writeText(id).catch(() => {}) },
       { type: 'separator' },
       { label: translate('tray.checkUpdates'), click: onCheckUpdates },
       { label: translate('tray.quit'), click: onQuit },

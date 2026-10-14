@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  app, Menu, Notification, clipboard, dialog, ipcMain, nativeTheme, protocol, safeStorage, session, shell,
+  app, ClipboardItem, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, safeStorage, session, shell,
 } from 'electron';
 import { log, initLogFile } from './log.js';
 import { loadConfig } from './config.js';
@@ -16,7 +16,12 @@ import { createTray } from './tray.js';
 import { Updater } from './updater.js';
 import { ClipboardSync } from './clipboard.js';
 import { FileReceiver } from './files.js';
-import { createInjector } from './input/index.js';
+import { DropManager } from './drops.js';
+import { InputService } from './input-service.js';
+import { clipboardSequence, createClipboardFiles } from './clipboard-native.js';
+import { ClipboardTransfers } from './clipboard-transfer.js';
+import { VirtualCamera } from './camera/virtual-camera.js';
+import { qrRows } from './qr.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
 import { MIN_PERMANENT_PASSWORD_LENGTH, normalizeId, isValidId } from '../shared/protocol.js';
 
@@ -82,6 +87,8 @@ function registerAppProtocol() {
     main: path.join(appPath, 'src', 'renderer', 'main'),
     viewer: path.join(appPath, 'src', 'renderer', 'viewer'),
     host: path.join(appPath, 'src', 'renderer', 'host'),
+    drop: path.join(appPath, 'src', 'renderer', 'drop'),
+    camera: path.join(appPath, 'src', 'renderer', 'camera'),
     common: path.join(appPath, 'src', 'renderer', 'common'),
     shared: path.join(appPath, 'src', 'shared'),
     assets: path.join(appPath, 'assets'),
@@ -128,8 +135,13 @@ async function main() {
 
   registerAppProtocol();
 
-  const injector = await createInjector(log);
-  const clipboardSync = new ClipboardSync({ clipboard, getSequence: injector.clipboardSequence?.bind(injector), log });
+  const input = new InputService({ appPath, log });
+  await input.start();
+  const clipboardSync = new ClipboardSync({
+    clipboard, ClipboardItem, files: createClipboardFiles({ log }), getSequence: clipboardSequence(log), log,
+  });
+  const clipTransfers = new ClipboardTransfers({ clipboard: clipboardSync, log });
+  clipTransfers.cleanup();
   const downloadsDir = () => process.env.PAIRDESK_DOWNLOADS_DIR || path.join(app.getPath('downloads'), 'PairDesk');
   const files = new FileReceiver({ getDirectory: downloadsDir, log });
 
@@ -155,11 +167,21 @@ async function main() {
 
   let sessions;
   const network = new Network({ settings, config, log, canAccept: () => sessions.canAccept() });
+  const virtualCamera = new VirtualCamera({ appPath, resourcesPath: process.resourcesPath, packaged: app.isPackaged, log });
   sessions = new SessionManager({
-    network, settings, injector, clipboard: clipboardSync, files, windows, log, appVersion: app.getVersion(), notify,
+    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, virtualCamera, log, appVersion: app.getVersion(), notify,
     // The translator changes with the language setting.
     t: (key, vars) => t(key, vars),
   });
+
+  const drops = new DropManager({
+    target: () => sessions.dropTarget(),
+    windows,
+    input,
+    fallbackDir: downloadsDir,
+    log,
+  });
+  drops.cleanup();
 
   const updater = new Updater({ log, isPackaged: app.isPackaged, currentVersion: app.getVersion() });
 
@@ -182,7 +204,7 @@ async function main() {
     recents: settings.publicRecents(),
     update: updater.state,
     sessions: sessions.summary(),
-    input: { available: injector.available, reason: injector.reason || null },
+    input: { available: input.available, reason: input.reason || null },
     lockedFor: network.limiter.lockedFor(),
   });
   let pushTimer = null;
@@ -260,6 +282,7 @@ async function main() {
     }
     if ('useRandomPassword' in changed || 'passwordLength' in changed) network.regeneratePassword();
     if ('autoCheckUpdates' in changed) updater.schedule(settings.get('autoCheckUpdates'));
+    if ('allowControl' in changed) sessions.syncInput();
     pushState();
   });
 
@@ -300,6 +323,7 @@ async function main() {
     });
   };
   const SESSION = ['viewer', 'host'];
+  const RTC = [...SESSION, 'camera']; // windows with a WebRTC session
 
   // Main window
   handle('app:state', ['main'], () => appState());
@@ -307,6 +331,22 @@ async function main() {
   handle('app:copy', ['main', ...SESSION], (_ctx, text) => clipboard.writeText(String(text).slice(0, 10_000)));
   handle('app:open-external', ['main'], (_ctx, url) => {
     if (typeof url === 'string' && (url.startsWith(config.homepage) || url.startsWith('https://github.com/Azukkia/PairDesk'))) shell.openExternal(url);
+  });
+  // The Android app is offered once a release carries it (the link points to
+  // the latest release's APK).
+  let apkAvailable = false;
+  handle('app:android', ['main'], async () => {
+    if (!apkAvailable) {
+      try {
+        // One byte: GitHub's file servers refuse HEAD requests.
+        const res = await net.fetch(config.androidApkUrl, { headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(8000) });
+        apkAvailable = res.ok;
+        res.body?.cancel().catch(() => {});
+      } catch {
+        apkAvailable = false;
+      }
+    }
+    return { url: config.androidApkUrl, qr: qrRows(config.androidApkUrl), available: apkAvailable };
   });
   handle('app:open-logs', ['main'], () => shell.openPath(path.dirname(log.file || app.getPath('userData'))));
   handle('settings:update', ['main'], (_ctx, patch) => {
@@ -346,15 +386,15 @@ async function main() {
   });
 
   // Session windows (viewer = controller side, host = controlled side)
-  handle('session:init', SESSION, async (ctx) => {
+  handle('session:init', RTC, async (ctx) => {
     const payload = sessions.initPayload(ctx);
     if (ctx.kind === 'host') payload.displays = await sessions.listDisplays();
     payload.lang = lang;
     return payload;
   });
-  on('session:ready', SESSION, (ctx) => sessions.rendererReady(ctx));
-  on('session:signal', SESSION, (ctx, data) => sessions.sendSignal(ctx, data));
-  on('session:failed', SESSION, (ctx, reason) => {
+  on('session:ready', RTC, (ctx) => sessions.rendererReady(ctx));
+  on('session:signal', RTC, (ctx, data) => sessions.sendSignal(ctx, data));
+  on('session:failed', RTC, (ctx, reason) => {
     log.warn(`[session] ${ctx.kind} reported failure: ${reason}`);
     sessions.endSession(ctx.sid, 'failed');
   });
@@ -373,20 +413,49 @@ async function main() {
     if (prefs.scale) patch.viewerScale = prefs.scale;
     settings.update(patch);
   });
+  handle('camera:attach', ['camera'], (ctx) => sessions.attachVirtualCamera(ctx));
+  handle('camera:end', ['camera'], (ctx) => sessions.endSession(ctx.sid, 'camera-ended'));
   handle('host:consent', ['host'], (ctx, accept) => sessions.hostConsent(ctx.sid, Boolean(accept)));
   handle('host:displays', ['host'], () => sessions.listDisplays());
   on('host:set-display', ['host'], (ctx, displayId) => sessions.setHostDisplay(ctx, displayId));
-  on('host:cursor-resync', ['host'], (ctx) => sessions.resyncCursor(ctx));
   on('input:events', ['host'], (ctx, events) => sessions.injectInput(ctx, events));
   handle('host:end', ['host'], (ctx) => sessions.endSession(ctx.sid, 'host-ended'));
   on('host:resize', ['host'], (ctx, height) => windows.resizeHost(ctx.win, Number(height) || 200));
-  on('clipboard:remote', SESSION, (ctx, text) => sessions.remoteClipboard(ctx, String(text)));
+  on('host:collapse', ['host'], (ctx, collapsed) => windows.collapseHost(ctx.win, Boolean(collapsed)));
+  on('clipboard:remote', SESSION, (ctx, payload) => sessions.remoteClipboard(ctx, payload));
+  handle('clipboard:current', SESSION, (ctx) => sessions.currentClipboard(ctx));
+  handle('clipboard:list', SESSION, (ctx, cid) => (sessions.clipboardFilesAllowed(ctx) ? clipTransfers.list(String(cid)) : null));
+  handle('clipboard:read', SESSION, (ctx, cid, id, start, end) => {
+    if (!sessions.clipboardFilesAllowed(ctx)) throw new Error('clipboard disabled');
+    return clipTransfers.read(String(cid), id, start, end);
+  });
+  handle('clipboard:expect', SESSION, (ctx, { cid, n, folders } = {}) => {
+    if (!sessions.clipboardFilesAllowed(ctx)) return null;
+    return clipTransfers.expect(ctx, String(cid), n, folders);
+  });
 
   // File transfers (received files go to Downloads/PairDesk)
-  handle('files:begin', SESSION, (ctx, { name, size } = {}) => {
+  handle('files:begin', SESSION, (ctx, { name, size, drop, clip } = {}) => {
+    if (clip) {
+      // Clipboard content (image, copied files): into a staging folder.
+      const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name), Number(size)) : null;
+      if (!accepted) return { ok: false, error: 'disabled' };
+      try {
+        const res = files.begin(ctx.sid, accepted.name, Number(size), { directory: accepted.directory });
+        clipTransfers.track(res.token, ctx, clip.cid, accepted);
+        return { ok: true, ...res, clip: accepted.kind };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    }
     if (!sessions.canReceiveFiles(ctx)) return { ok: false, error: 'disabled' };
     try {
-      return { ok: true, ...files.begin(ctx.sid, String(name), Number(size)) };
+      // Dropped at a position of this screen: received in a staging folder,
+      // then dropped there for real (drops.js).
+      const staged = ctx.kind === 'host' ? drops.accept(ctx.sid, drop) : null;
+      const res = files.begin(ctx.sid, String(name), Number(size), staged ? { directory: staged.directory } : {});
+      if (staged) drops.track(res.token, staged.id);
+      return { ok: true, ...res, dropped: Boolean(staged) };
     } catch (err) {
       return { ok: false, error: err.message };
     }
@@ -394,19 +463,33 @@ async function main() {
   on('files:chunk', SESSION, (ctx, token, chunk) => files.write(ctx.sid, String(token), chunk));
   handle('files:end', SESSION, async (ctx, token) => {
     try {
-      return { ok: true, path: await files.end(ctx.sid, String(token)) };
+      const file = await files.end(ctx.sid, String(token));
+      drops.fileDone(String(token), file);
+      const clip = await clipTransfers.fileDone(String(token), file);
+      if (clip?.ready && !ctx.win.isDestroyed()) ctx.win.webContents.send('clipboard:ready', clip.ready);
+      return { ok: true, path: file };
     } catch (err) {
+      drops.fileDone(String(token), null);
+      clipTransfers.fileDone(String(token), null);
       return { ok: false, error: err.message };
     }
   });
-  on('files:abort', SESSION, (ctx, token) => files.abort(ctx.sid, String(token)));
+  on('files:abort', SESSION, (ctx, token) => {
+    files.abort(ctx.sid, String(token));
+    drops.fileDone(String(token), null);
+    clipTransfers.fileDone(String(token), null);
+  });
+  // "dragstart" in the drop source window (checked against the window it opened).
+  const dragIcon = nativeImage.createFromPath(path.join(appPath, 'assets', 'icon.png')).resize({ width: 32, height: 32 });
+  ipcMain.on('drop:start', (event) => drops.onDragStart(event.sender, dragIcon));
   handle('files:show', [...SESSION, 'main'], (_ctx, file) => {
     const target = path.resolve(String(file));
     if (target.startsWith(downloadsDir() + path.sep)) shell.showItemInFolder(target);
   });
 
   if (E2E) {
-    handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...injector.cursorPos(), shape: await sessions.cursorShapeDebug() }));
+    handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...(await input.cursorPos()), shape: await input.cursorDebug() }));
+    handle('e2e:vcam', ['main'], () => virtualCamera.stats());
   }
 
   // ───────────── start ─────────────
@@ -459,10 +542,15 @@ async function main() {
   app.on('activate', () => windows.showMain());
   app.on('before-quit', () => {
     quitting = true;
-    sessions.endAll();
+    sessions.endAll(); // also tells the input helper to release every key and button
+    input.beginShutdown();
     settings.saveNow();
     // Give the "bye" messages a moment to leave before the transport closes.
-    setTimeout(() => network.stop(), 200);
+    setTimeout(() => {
+      network.stop();
+      input.stop();
+      virtualCamera.stop();
+    }, 200);
   });
   app.on('window-all-closed', () => {
     if (!settings.get('closeToTray') || quitting) app.quit();

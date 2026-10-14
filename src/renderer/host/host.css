@@ -33,4 +33,12 @@ body.host { overflow: hidden; }
 .host-chat { flex: 1; display: flex; flex-direction: column; border-top: 1px solid var(--border); min-height: 0; }
 .host-chat .chat-messages { padding: 10px; }
 
-body.collapsed .host-body, body.collapsed .host-chat { display: none; }
+.side-tab { display: none; }
+body.collapsed #app { display: none; }
+body.collapsed { background: #3b6cf6; }
+body.collapsed .side-tab {
+  display: flex; position: fixed; inset: 0; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  border: none; padding: 0; margin: 0; cursor: pointer; color: #fff; background: var(--brand-gradient);
+}
+body.collapsed .side-tab:hover { filter: brightness(1.12); }
+.side-tab .live { width: 8px; height: 8px; border-radius: 50%; background: #ff5b5b; box-shadow: 0 0 0 3px rgba(255, 91, 91, 0.35); animation: pulse 1.6s ease-in-out infinite; }

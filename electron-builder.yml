@@ -47,6 +47,12 @@ win:
       arch:
         - x64
   icon: build/icon.ico
+  # The "PairDesk Camera" virtual webcam (npm run build:camera).
+  extraResources:
+    - from: native/bin/win32-x64
+      to: camera
+      filter:
+        - PairDeskCamera.dll
   artifactName: PairDesk-Setup-${version}.${ext}
 
 nsis:

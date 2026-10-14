@@ -38,9 +38,9 @@ export class FileReceiver {
     this.transfers = new Map();
   }
 
-  begin(owner, name, size) {
+  begin(owner, name, size, { directory = null } = {}) {
     if (!Number.isSafeInteger(size) || size < 0) throw new Error('invalid size');
-    const dir = this.getDirectory();
+    const dir = directory || this.getDirectory();
     fs.mkdirSync(dir, { recursive: true });
     const finalPath = uniquePath(dir, sanitizeFileName(name));
     const partPath = `${finalPath}.pdpart`;

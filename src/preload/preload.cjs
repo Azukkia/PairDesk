@@ -5,25 +5,54 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const INVOKE = new Set([
-  'app:state', 'app:regenerate-password', 'app:copy', 'app:open-external', 'app:open-logs',
+  'app:state', 'app:regenerate-password', 'app:copy', 'app:open-external', 'app:open-logs', 'app:android',
   'settings:update', 'settings:set-permanent-password', 'recents:remove', 'recents:forget-password',
   'connect:probe', 'connect:start', 'connect:cancel', 'session:end-incoming',
   'update:check', 'update:download', 'update:install',
   'session:init', 'viewer:end', 'viewer:reconnect', 'viewer:fullscreen', 'viewer:set-clipboard', 'viewer:set-prefs',
   'host:consent', 'host:displays', 'host:end',
   'files:begin', 'files:end', 'files:show',
-  'e2e:cursor',
+  'clipboard:current', 'clipboard:list', 'clipboard:read', 'clipboard:expect',
+  'camera:attach', 'camera:end',
+  'e2e:cursor', 'e2e:vcam',
 ]);
 
 const SEND = new Set([
-  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'host:cursor-resync', 'input:events', 'host:resize',
+  'session:ready', 'session:signal', 'session:failed', 'host:set-display', 'input:events', 'host:resize', 'host:collapse', 'drop:start',
   'clipboard:remote', 'files:chunk', 'files:abort',
 ]);
 
 const RECEIVE = new Set([
   'app:state', 'app:navigate', 'app:deeplink', 'connect:status',
-  'session:signal', 'session:ended', 'session:state', 'clipboard:local', 'host:cursor',
+  'session:signal', 'session:ended', 'session:state', 'clipboard:local', 'clipboard:ready',
 ]);
+
+// Host window only: a direct line to the input helper process (remote mouse
+// and keyboard). It does not go through the main process, whose thread can be
+// stuck in a Windows modal loop (window being dragged, tray menu...).
+let inputPort = null;
+const inputListeners = new Set();
+ipcRenderer.on('input:port', (event) => {
+  try {
+    inputPort?.close();
+  } catch {
+    /* ignore */
+  }
+  inputPort = event.ports[0] || null;
+  if (!inputPort) return;
+  inputPort.onmessage = (e) => {
+    for (const cb of inputListeners) cb(e.data);
+  };
+  inputPort.start();
+});
+
+// Camera window only: a direct line to the camera helper process, which
+// hands the phone's frames to the "PairDesk Camera" virtual webcam. The port
+// goes to the page (then to its frames worker) as a real MessagePort, so
+// frames never cross the context bridge.
+ipcRenderer.on('camera:port', (event, format) => {
+  if (event.ports[0]) window.postMessage({ type: 'pairdesk:camera-port', format }, '*', [event.ports[0]]);
+});
 
 contextBridge.exposeInMainWorld('pairdesk', {
   platform: process.platform,
@@ -39,6 +68,18 @@ contextBridge.exposeInMainWorld('pairdesk', {
     const listener = (_event, ...args) => callback(...args);
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);
+  },
+  inputPort: {
+    /** Returns false when the port is not there yet (use 'input:events'). */
+    send(msg) {
+      if (!inputPort) return false;
+      inputPort.postMessage(msg);
+      return true;
+    },
+    on(callback) {
+      inputListeners.add(callback);
+      return () => inputListeners.delete(callback);
+    },
   },
   pathForFile(file) {
     try {

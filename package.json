@@ -1,7 +1,7 @@
 {
   "name": "pairdesk",
   "productName": "PairDesk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "PairDesk — contrôle à distance et partage d'écran pair-à-pair, sécurisé et gratuit.",
   "author": {
     "name": "Azukkia",
@@ -18,9 +18,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --pairdesk-dev",
-    "test": "node --test \"test/unit/*.test.js\"",
+    "test": "node --test --test-timeout=60000 \"test/unit/*.test.js\"",
     "test:e2e": "node --test --test-concurrency=1 \"test/e2e/*.test.js\"",
     "icons": "node scripts/generate-icons.mjs",
+    "build:camera": "node scripts/build-camera.mjs",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win --x64 --publish never",
     "dist:linux": "electron-builder --linux --publish never",
@@ -36,6 +37,7 @@
     "electron-updater": "^6.8.9",
     "koffi": "^3.3.2",
     "mqtt": "^5.16.0",
+    "qrcode-generator": "^2.0.4",
     "ws": "^8.22.0"
   },
   "devDependencies": {

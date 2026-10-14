@@ -10,101 +10,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import electronPath from 'electron';
-import { _electron as electron } from 'playwright-core';
-import http from 'node:http';
-import { WebSocketServer, createWebSocketStream } from 'ws';
-import { Aedes } from 'aedes';
-import { createServer } from '../../server/src/server.js';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const artifacts = process.env.PAIRDESK_E2E_ARTIFACTS || path.join(os.tmpdir(), 'pairdesk-e2e');
-fs.mkdirSync(artifacts, { recursive: true });
-
-// PAIRDESK_PACKAGED_EXE runs the test against a packaged build instead of
-// the sources (e.g. dist/win-unpacked/PairDesk.exe).
-const packaged = process.env.PAIRDESK_PACKAGED_EXE ? path.resolve(process.env.PAIRDESK_PACKAGED_EXE) : null;
-
-// PAIRDESK_E2E_HOST_APP / PAIRDESK_E2E_CTRL_APP run one side from another
-// source tree (e.g. a checkout of the previous release) to test compatibility.
-const hostRoot = process.env.PAIRDESK_E2E_HOST_APP ? path.resolve(process.env.PAIRDESK_E2E_HOST_APP) : root;
-const ctrlRoot = process.env.PAIRDESK_E2E_CTRL_APP ? path.resolve(process.env.PAIRDESK_E2E_CTRL_APP) : root;
-
-// PAIRDESK_E2E_TRANSPORT=mqtt exercises the default "public relays" mode
-// with a local MQTT broker instead of the PairDesk server.
-const useMqtt = process.env.PAIRDESK_E2E_TRANSPORT === 'mqtt';
-
-async function startSignaling() {
-  if (!useMqtt) {
-    const server = createServer({ port: 0, host: '127.0.0.1' });
-    const port = await server.listen();
-    return { env: { PAIRDESK_SERVER_URL: `ws://127.0.0.1:${port}/ws` }, close: () => server.close() };
-  }
-  const brokers = [];
-  for (let i = 0; i < 2; i++) {
-    const aedes = await Aedes.createBroker();
-    const httpServer = http.createServer();
-    const wss = new WebSocketServer({ server: httpServer });
-    wss.on('connection', (socket, req) => aedes.handle(createWebSocketStream(socket), req));
-    await new Promise((r) => httpServer.listen(0, '127.0.0.1', r));
-    brokers.push({ aedes, httpServer, wss, url: `ws://127.0.0.1:${httpServer.address().port}/mqtt` });
-  }
-  return {
-    env: { PAIRDESK_MQTT_BROKERS: brokers.map((b) => b.url).join(',') },
-    async close() {
-      for (const b of brokers) {
-        for (const c of b.wss.clients) c.terminate();
-        await new Promise((r) => b.httpServer.close(r));
-        await new Promise((r) => b.aedes.close(r));
-      }
-    },
-  };
-}
-
-async function launch(name, signalingEnv, appRoot = root) {
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), `pd-${name}-`));
-  const downloads = path.join(profile, 'downloads');
-  const args = packaged ? [`--pairdesk-profile=${profile}`] : [appRoot, `--pairdesk-profile=${profile}`];
-  if (process.platform === 'linux') args.push('--no-sandbox', '--disable-gpu');
-  const app = await electron.launch({
-    executablePath: packaged || electronPath,
-    args,
-    env: { ...process.env, ...signalingEnv, PAIRDESK_E2E: '1', PAIRDESK_DEBUG: '1', PAIRDESK_DOWNLOADS_DIR: downloads },
-    timeout: 60_000,
-  });
-  app.process().stderr.on('data', (d) => {
-    const line = String(d);
-    if (/\[(warn|error)\]/.test(line)) process.stderr.write(`[${name}] ${line}`);
-  });
-  const main = await app.firstWindow();
-  main.on('pageerror', (e) => process.stderr.write(`[${name} main pageerror] ${e.message}\n`));
-  await main.waitForSelector('#my-id', { timeout: 30_000 });
-  return { app, main, profile, downloads };
-}
-
-async function waitForWindow(app, fragment, timeout = 30_000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const found = app.windows().find((w) => w.url().includes(fragment));
-    if (found) return found;
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`window ${fragment} did not open`);
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function poll(fn, { timeout = 15_000, interval = 200, message = 'condition' } = {}) {
-  const deadline = Date.now() + timeout;
-  let last;
-  while (Date.now() < deadline) {
-    last = await fn();
-    if (last) return last;
-    await sleep(interval);
-  }
-  throw new Error(`timed out waiting for ${message} (last: ${JSON.stringify(last)})`);
-}
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import {
+  root, artifacts, hostRoot, ctrlRoot, startSignaling, launch, waitForWindow, sleep, poll, dumpDiagnostics,
+} from './helpers.js';
 
 /** Places a window of `app` (selected by URL fragment) at the given bounds. */
 function placeWindow(app, fragment, bounds, top = false) {
@@ -161,21 +71,6 @@ async function checkLocalCursor(viewer, host) {
     throw new Error(`${err.message}: viewer has ${JSON.stringify(shape)}, host probe ${JSON.stringify(debug)}`);
   }
   process.stderr.write(`viewer cursor over the host text field: ${shape.slice(0, 80)}\n`);
-}
-
-async function dumpDiagnostics(instances) {
-  for (const inst of instances) {
-    for (const [i, page] of inst.app.windows().entries()) {
-      const name = `${inst.name}-${i}-${page.url().split('/').slice(-2, -1)[0] || 'window'}`;
-      await page.screenshot({ path: path.join(artifacts, `failure-${name}.png`), timeout: 5000 }).catch(() => {});
-    }
-    try {
-      const lines = fs.readFileSync(path.join(inst.profile, 'logs', 'main.log'), 'utf8').trim().split('\n');
-      process.stderr.write(`\n----- ${inst.name} main.log (last 80 lines) -----\n${lines.slice(-80).join('\n')}\n`);
-    } catch (err) {
-      process.stderr.write(`no log for ${inst.name}: ${err.message}\n`);
-    }
-  }
 }
 
 test('two PairDesk instances: connect, view, control, chat, files, disconnect', { timeout: 240_000 }, async (t) => {
@@ -313,6 +208,141 @@ async function scenario(host, ctrl) {
       const c = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor'));
       return Math.abs(c.x - target2.x) <= tolerance && Math.abs(c.y - target2.y) <= tolerance;
     }, { message: `host cursor near ${JSON.stringify(target2)} after quality changes` });
+  }
+
+  // 5c. Grab the host panel by its title bar with the remote mouse and drag
+  // it: on Windows this starts a modal move loop in the host's main process,
+  // which must not stop the remote mouse (it used to freeze the session).
+  {
+    await setVisible(host.app, '/main/', false);
+    await sleep(500);
+    const before = await host.app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/host/'));
+      return win.getBounds();
+    });
+    const grab = { x: Math.round((before.x + 70) * screenInfo.scale), y: Math.round((before.y + 22) * screenInfo.scale) };
+    const g = await viewerPointFor(viewer, grab, screenInfo);
+    await viewer.mouse.move(g.x, g.y, { steps: 3 });
+    await poll(async () => {
+      const c = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor'));
+      return Math.abs(c.x - grab.x) <= tolerance && Math.abs(c.y - grab.y) <= tolerance;
+    }, { message: 'host cursor on the panel title bar' });
+    await viewer.mouse.down();
+    await viewer.mouse.move(g.x - 30, g.y - 20, { steps: 6 });
+    await viewer.mouse.move(g.x - 60, g.y - 40, { steps: 6 });
+    await viewer.mouse.up();
+    await sleep(500);
+    const after = await host.app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/host/'));
+      return win.getBounds();
+    });
+    process.stderr.write(`host panel dragged from ${JSON.stringify(before)} to ${JSON.stringify(after)}\n`);
+    // The remote mouse still works afterwards.
+    const target3 = { x: Math.round((before.x - 150) * screenInfo.scale), y: Math.round((before.y - 120) * screenInfo.scale) };
+    const p3 = await viewerPointFor(viewer, target3, screenInfo);
+    await viewer.mouse.move(p3.x, p3.y, { steps: 5 });
+    await poll(async () => {
+      const c = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor'));
+      return Math.abs(c.x - target3.x) <= tolerance && Math.abs(c.y - target3.y) <= tolerance;
+    }, { timeout: 10_000, message: `remote mouse still working after dragging the host panel (${JSON.stringify(target3)})` });
+    await setVisible(host.app, '/main/', true);
+    await placeWindow(host.app, '/main/', placed.outer, true);
+    await sleep(300);
+  }
+
+  // 5d. The host panel collapses into a small tab on the right edge, and comes back.
+  {
+    const bounds = () => host.app.evaluate(({ BrowserWindow, screen }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/host/'));
+      return { b: win.getBounds(), area: screen.getDisplayMatching(win.getBounds()).workArea };
+    });
+    const open = await bounds();
+    await panel.click('#host-collapse');
+    const tab = await poll(async () => {
+      const r = await bounds();
+      return r.b.width < 60 ? r : null;
+    }, { message: 'host panel collapsed into a tab' });
+    assert.ok(Math.abs(tab.b.x + tab.b.width - (tab.area.x + tab.area.width)) <= 2, `tab on the right edge: ${JSON.stringify(tab)}`);
+    await shot(panel, 'host-panel-collapsed');
+    await panel.click('#host-expand');
+    const back = await poll(async () => {
+      const r = await bounds();
+      return r.b.width === open.b.width ? r : null;
+    }, { message: 'host panel expanded again' });
+    assert.deepEqual(back.b, open.b);
+  }
+
+  // 5e. Files dropped on the remote screen land where they were dropped: here
+  // in a window of the host computer that accepts file drops.
+  {
+    const zone = { x: work.x + 120, y: work.y + 120, width: 320, height: 220 };
+    // The main window was made topmost above: out of the way.
+    await setVisible(host.app, '/main/', false);
+    await host.app.evaluate(({ BrowserWindow }, bounds) => {
+      const win = new BrowserWindow({ ...bounds, frame: false, alwaysOnTop: true, show: true, title: 'drop-zone' });
+      win.setAlwaysOnTop(true, 'floating');
+      win.moveTop();
+      const html = '<body style="margin:0;background:#2e7d32;height:100vh" ondragover="event.preventDefault()" '
+        + 'ondrop="event.preventDefault();document.title=\'dropped:\'+[...event.dataTransfer.files].map(function(f){return f.name}).join(\'|\')"></body>';
+      win.loadURL(`data:text/html,${encodeURIComponent(html)}`);
+      globalThis.__dropZone = win;
+    }, zone);
+    await sleep(800);
+    const point = { x: Math.round((zone.x + zone.width / 2) * screenInfo.scale), y: Math.round((zone.y + zone.height / 2) * screenInfo.scale) };
+    const vp = await viewerPointFor(viewer, point, screenInfo);
+    // Accented names on Windows (UTF-16 drops); between two Chromium windows
+    // on X11 they arrive mangled, which is a Chromium issue, not ours.
+    const dropName = process.platform === 'win32' ? 'déposé ici.txt' : 'depose ici.txt';
+    await viewer.evaluate(({ x, y, dropName }) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['bonjour depuis le contrôleur'], dropName, { type: 'text/plain' }));
+      const target = document.elementFromPoint(x, y);
+      target.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    }, { ...vp, dropName });
+    const title = await poll(() => host.app.evaluate(() => {
+      const t = globalThis.__dropZone.getTitle();
+      return t.startsWith('dropped:') ? t : null;
+    }), { timeout: 20_000, message: 'file dropped in the host window under the drop point' });
+    assert.equal(title, `dropped:${dropName}`);
+    await host.app.evaluate(() => globalThis.__dropZone.destroy());
+    await setVisible(host.app, '/main/', true);
+  }
+
+  // 5f. Files copied on the controller and pasted (Ctrl+V) in the viewer end up
+  // in the host's clipboard. Both instances share one clipboard here, so the
+  // check is that the host wrote a received copy (its staging folder).
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-copy-'));
+    const copied = path.join(dir, 'copie test.txt');
+    fs.writeFileSync(copied, 'contenu copié');
+    const readFiles = async () => {
+      if (process.platform === 'win32') {
+        const out = execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }'], { encoding: 'utf8' });
+        return out.split(/\r?\n/).filter(Boolean);
+      }
+      const list = await host.app.evaluate(async ({ clipboard }) => {
+        const [item] = await clipboard.read();
+        return item?.types.includes('text/uri-list') ? (await item.getType('text/uri-list')).text() : '';
+      });
+      return list.split(/\r?\n/).filter((l) => l.startsWith('file://')).map((l) => fileURLToPath(l));
+    };
+    if (process.platform === 'win32') {
+      execFileSync('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Path '${copied.replace(/'/g, "''")}'`]);
+    } else {
+      await ctrl.app.evaluate(({ clipboard, ClipboardItem }, uri) => clipboard.write([
+        new ClipboardItem({ 'electron application/osclipboard;format="text/uri-list"': uri }),
+      ]), pathToFileURL(copied).href);
+    }
+    await sleep(1500); // announced to the partner
+    await viewer.focus('#stage');
+    await viewer.keyboard.down('Control');
+    await viewer.keyboard.press('KeyV');
+    await viewer.keyboard.up('Control');
+    const received = await poll(async () => {
+      const files = await readFiles();
+      return files.find((f) => f.includes(`PairDesk${path.sep}clipboard`) && path.basename(f) === 'copie test.txt') || null;
+    }, { timeout: 20_000, message: 'copied file in the host clipboard' });
+    assert.equal(fs.readFileSync(received, 'utf8'), 'contenu copié');
   }
 
   // 6. Chat from the controller to the host panel.

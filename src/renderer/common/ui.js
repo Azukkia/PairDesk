@@ -53,6 +53,9 @@ const ICONS = {
   eyeOff: 'M3 3l18 18M10.6 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6A17.5 17.5 0 0 0 2 12s3.6 7 10 7a10 10 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
   monitor: 'M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 21h8M12 17v4',
   arrowRight: 'M5 12h14M13 6l6 6-6 6',
+  swap: 'M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4',
+  chevronLeft: 'M15 6l-6 6 6 6',
+  chevronRight: 'M9 6l6 6-6 6',
   x: 'M6 6l12 12M18 6 6 18',
   power: 'M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0',
   message: 'M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z',
@@ -82,6 +85,10 @@ const ICONS = {
   alert: 'M12 3 2 20h20zM12 10v4M12 17h.01',
   pointer: 'M4 3l7 17 2-7 7-2z',
   more: 'M12 6h.01M12 12h.01M12 18h.01',
+  camera: 'M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  phone: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2',
+  back: 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
+  square: 'M6 6h12v12H6z',
 };
 
 export function icon(name, cls = '') {

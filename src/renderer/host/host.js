@@ -5,6 +5,7 @@
 
 import { api, h, clear, icon, t, setLanguage, formatDuration, initials } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
+import { ClipboardBridge } from '../common/clipboard-bridge.js';
 import { AdaptiveScaler, CpuWatch, rankCodecs } from '../common/adaptive.js';
 import { formatId, QUALITY_PRESETS, versionAtLeast } from '../shared/protocol.js';
 
@@ -30,12 +31,20 @@ const timers = {};
 const ui = {};
 
 const peerLabel = () => init.peer.name || formatId(init.peer.id);
+const clip = new ClipboardBridge({
+  rtc: () => rtc,
+  peerVersion: () => init?.peer?.version,
+  enabled: () => Boolean(perms.clipboard),
+  files: () => Boolean(perms.files),
+  view: (name, size, direction) => transfers.add(name, size, direction),
+});
 
 // ───────────────────────────── layout ─────────────────────────────
 
 function resize() {
+  if (collapsed) return;
   const base = app.querySelector('.host-head').offsetHeight + ui.body.offsetHeight + ui.transfers.offsetHeight + 2;
-  const height = collapsed ? 44 : chatOpen ? Math.max(430, base + 240) : base;
+  const height = chatOpen ? Math.max(430, base + 240) : base;
   api.send('host:resize', height);
 }
 
@@ -43,7 +52,11 @@ function build() {
   ui.title = h('span', { class: 'title' });
   ui.timer = h('span', { class: 'timer' });
   ui.live = h('span', { class: 'live', hidden: true });
-  ui.collapse = h('button', { class: 'icon-btn', title: '', onclick: () => { collapsed = !collapsed; document.body.classList.toggle('collapsed', collapsed); clear(ui.collapse, icon(collapsed ? 'maximize' : 'minimize', 'sm')); resize(); } }, icon('minimize', 'sm'));
+  // Collapses the panel into a small tab on the right edge of the screen
+  // (out of the way of the person controlling), with an arrow to bring it back.
+  ui.collapse = h('button', { class: 'icon-btn', id: 'host-collapse', hidden: true, onclick: () => setCollapsed(true) }, icon('chevronRight', 'sm'));
+  ui.tab = h('button', { class: 'side-tab', id: 'host-expand', onclick: () => setCollapsed(false) },
+    icon('chevronLeft', 'sm'), h('span', { class: 'live' }));
   ui.body = h('div', { class: 'host-body' });
   chat = new ChatView({ onSend: (text) => rtc?.sendControl({ type: 'chat', text }) });
   ui.chat = h('div', { class: 'host-chat', hidden: true }, chat.list, chat.form);
@@ -52,8 +65,26 @@ function build() {
   clear(app,
     h('header', { class: 'host-head' }, h('img', { src: '../assets/logo.svg', alt: '' }), ui.live, ui.title, ui.timer, ui.collapse),
     ui.body, ui.transfers, ui.chat, ui.fileInput);
+  document.body.append(ui.tab);
   transfers = new TransferList({ container: ui.transfers, onChange: () => requestAnimationFrame(resize) });
 }
+
+function setCollapsed(on) {
+  if (on === collapsed) return;
+  collapsed = on;
+  document.body.classList.toggle('collapsed', on);
+  api.send('host:collapse', on);
+  // When expanding, the height is measured once the window is wide again
+  // (see the resize listener below).
+}
+
+// The content height depends on the width: re-measure when it changes.
+let lastWidth = window.innerWidth;
+window.addEventListener('resize', () => {
+  if (window.innerWidth === lastWidth) return;
+  lastWidth = window.innerWidth;
+  if (!collapsed) requestAnimationFrame(resize);
+});
 
 function whoBlock(sub) {
   return h('div', { class: 'who' },
@@ -91,6 +122,7 @@ async function accept() {
 function showActive(status) {
   ui.title.textContent = t('host.activeTitle');
   ui.live.hidden = false;
+  ui.collapse.hidden = false;
   ui.status = h('div', { class: 'host-status', id: 'host-status' }, status);
   clear(ui.body,
     whoBlock(t(perms.control ? 'host.controlledBy' : 'host.viewedBy', { name: peerLabel() })),
@@ -302,18 +334,23 @@ async function startHosting() {
   }
 
   rtc = new RtcSession({ role: 'host', iceServers: init.iceServers });
-  rtc.acceptFile = async ({ name, size }) => {
-    if (!perms.files) return { ok: false };
-    const res = await api.invoke('files:begin', { name, size });
+  rtc.acceptFile = async ({ name, size, drop, clip: clipInfo }) => {
+    if (!perms.files && !(clipInfo && perms.clipboard)) return { ok: false };
+    // With a drop position: delivered where the controller dropped it.
+    const res = await api.invoke('files:begin', { name, size, drop: perms.control ? drop : undefined, clip: clipInfo });
     if (!res.ok) return res;
-    return { ...res, view: transfers.add(res.name, size, 'in') };
+    const view = res.clip === 'image' ? { update() {} } : transfers.add(res.name, size, 'in');
+    return { ...res, view };
   };
   rtc.addEventListener('input', ({ detail }) => {
-    if (perms.control) api.send('input:events', detail);
+    if (!perms.control) return;
+    if (!window.pairdesk.inputPort.send(detail)) api.send('input:events', detail);
   });
   rtc.addEventListener('control-open', () => {
     sendInfo();
-    api.send('host:cursor-resync');
+    window.pairdesk.inputPort.send({ type: 'cursor-resync' });
+    if (inputBlocked) rtc.sendControl({ type: 'input-blocked', reason: inputBlocked });
+    clip.sendCurrent();
   });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
@@ -381,15 +418,23 @@ function onControl(msg) {
     case 'quality':
       applyQuality(msg.mode);
       break;
+    case 'wake':
+      // The viewer's picture stopped changing: the screen may be asleep.
+      window.pairdesk.inputPort.send({ type: 'wake' });
+      break;
     case 'select-display':
       switchDisplay(String(msg.displayId));
       break;
     case 'chat':
+      setCollapsed(false);
       chat.add(String(msg.text || '').slice(0, 2000), false, peerLabel());
       if (!chatOpen) toggleChat(true);
       break;
     case 'clipboard':
-      if (perms.clipboard && typeof msg.text === 'string') api.send('clipboard:remote', msg.text);
+    case 'clipboard-fetch':
+    case 'clipboard-files':
+    case 'clipboard-ready':
+      clip.onControl(msg);
       break;
     case 'bye':
       api.invoke('host:end');
@@ -417,18 +462,26 @@ api.on('session:state', ({ state, perms: p }) => {
     startHosting();
   }
 });
-api.on('clipboard:local', (text) => {
-  if (perms.clipboard && rtc?.pc.connectionState === 'connected') rtc.sendControl({ type: 'clipboard', text });
+api.on('clipboard:local', (payload) => {
+  if (rtc?.pc.connectionState === 'connected') clip.local(payload);
 });
-// Shape of the local mouse cursor, drawn by the viewer with zero delay.
-api.on('host:cursor', (msg) => {
-  if (perms.control) rtc?.sendControl(msg);
+// From the input helper: shape of the local mouse cursor (drawn by the viewer
+// with zero delay), and whether Windows currently blocks injected input.
+let inputBlocked = null;
+window.pairdesk.inputPort.on((msg) => {
+  if (msg?.type === 'cursor') {
+    if (perms.control) rtc?.sendControl(msg);
+  } else if (msg?.type === 'input-state') {
+    inputBlocked = msg.blocked || null;
+    if (perms.control) rtc?.sendControl({ type: 'input-blocked', reason: inputBlocked });
+  }
 });
 
 init = await api.invoke('session:init');
 setLanguage(init.lang);
 perms = init.perms || {};
 build();
-ui.collapse.title = t('common.hide');
+ui.collapse.title = t('host.collapse');
+ui.tab.title = t('host.expand', { name: peerLabel() });
 if (init.state === 'pending') showPending();
 else startHosting();
