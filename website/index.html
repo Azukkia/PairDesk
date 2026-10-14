@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PairDesk — Contrôle à distance</title>
+<meta name="description" content="PairDesk : prenez la main sur un ordinateur à distance en quelques secondes. Gratuit, sans compte, chiffré de bout en bout.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --bg: #f4f6fb;
+  --bg-elev: #ffffff;
+  --bg-sunken: #eceff6;
+  --text: #0f172a;
+  --text-muted: #556079;
+  --text-faint: #8a93a6;
+  --border: #e1e6ef;
+  --border-strong: #cfd6e3;
+  --accent: #2f62f5;
+  --accent-hover: #2552d8;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(47, 98, 245, 0.10);
+  --violet: #6d4cf6;
+  --success: #15a34a;
+  --success-soft: rgba(21, 163, 74, 0.12);
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 30px 80px rgba(15, 23, 42, 0.28);
+  --brand: linear-gradient(135deg, #3b82f6 0%, #6d4cf6 100%);
+
+  /* Night surfaces (hero, security): dark in both themes, like the app's sidebar. */
+  --night: #0b1020;
+  --night-elev: #141b31;
+  --night-border: rgba(255, 255, 255, 0.10);
+  --night-text: #e8ecf6;
+  --night-muted: #a3adc4;
+  --glow-a: rgba(59, 130, 246, 0.45);
+  --glow-b: rgba(109, 76, 246, 0.42);
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 24px;
+  --gutter: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
+  --max: 1180px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1322;
+    --bg-elev: #161c2e;
+    --bg-sunken: #0a0f1c;
+    --text: #e7ebf4;
+    --text-muted: #9aa4ba;
+    --text-faint: #6c7690;
+    --border: #252d44;
+    --border-strong: #323c58;
+    --accent: #4f7bff;
+    --accent-hover: #6a8fff;
+    --accent-soft: rgba(79, 123, 255, 0.16);
+    --success: #34c46a;
+    --success-soft: rgba(52, 196, 106, 0.14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.6);
+    --night: #070b16;
+    --night-elev: #111830;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1322;
+  --bg-elev: #161c2e;
+  --bg-sunken: #0a0f1c;
+  --text: #e7ebf4;
+  --text-muted: #9aa4ba;
+  --text-faint: #6c7690;
+  --border: #252d44;
+  --border-strong: #323c58;
+  --accent: #4f7bff;
+  --accent-hover: #6a8fff;
+  --accent-soft: rgba(79, 123, 255, 0.16);
+  --success: #34c46a;
+  --success-soft: rgba(52, 196, 106, 0.14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.6);
+  --night: #070b16;
+  --night-elev: #111830;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img, video { display: block; max-width: 100%; }
+a { color: var(--accent); text-decoration: none; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; letter-spacing: -0.02em; line-height: 1.12; }
+p { margin: 0; }
+.wrap { max-width: calc(var(--max) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ───── buttons ───── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 48px; padding: 0 22px; border-radius: 12px; border: 1px solid transparent;
+  font: 600 15px/1 var(--font); cursor: pointer; white-space: nowrap;
+  transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+}
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.btn.primary { background: var(--brand); color: #fff; box-shadow: 0 10px 30px -8px rgba(79, 99, 246, .7); }
+.btn.primary:hover { transform: translateY(-1px); box-shadow: 0 14px 36px -8px rgba(79, 99, 246, .85); }
+.btn.ghost { color: var(--night-text); border-color: var(--night-border); background: rgba(255, 255, 255, .04); }
+.btn.ghost:hover { background: rgba(255, 255, 255, .09); }
+.btn.line { color: var(--text); border-color: var(--border-strong); background: var(--bg-elev); }
+.btn.line:hover { border-color: var(--accent); color: var(--accent); }
+.btn small { font-weight: 500; opacity: .75; font-size: 13px; }
+
+/* ───── nav ───── */
+.nav {
+  position: fixed; inset: 0 0 auto 0; z-index: 50;
+  padding-top: env(safe-area-inset-top);
+  transition: background .25s ease, border-color .25s ease, backdrop-filter .25s ease;
+  border-bottom: 1px solid transparent;
+}
+.nav.solid { background: rgba(11, 16, 32, .78); backdrop-filter: saturate(160%) blur(14px); -webkit-backdrop-filter: saturate(160%) blur(14px); border-bottom-color: var(--night-border); }
+.nav .wrap { display: flex; align-items: center; gap: 28px; height: 68px; }
+.brand { display: flex; align-items: center; gap: 10px; color: #fff; font: 700 19px var(--font-display); letter-spacing: -0.01em; }
+.brand img { width: 34px; height: 34px; }
+.nav ul { display: flex; gap: 26px; list-style: none; margin: 0 0 0 auto; padding: 0; }
+.nav ul a { color: var(--night-muted); font-size: 14.5px; font-weight: 500; }
+.nav ul a:hover { color: #fff; }
+.nav .btn { min-height: 40px; padding: 0 16px; font-size: 14px; }
+@media (max-width: 860px) { .nav ul { display: none; } .nav .btn { margin-left: auto; } }
+
+/* ───── hero ───── */
+.hero {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: var(--night); color: var(--night-text);
+  padding: calc(140px + env(safe-area-inset-top)) 0 0;
+}
+.hero::before, .hero::after {
+  content: ""; position: absolute; z-index: -1; border-radius: 50%; filter: blur(90px); pointer-events: none;
+}
+.hero::before { width: 620px; height: 620px; left: -160px; top: -160px; background: var(--glow-a); }
+.hero::after { width: 680px; height: 680px; right: -220px; top: 120px; background: var(--glow-b); }
+.grid-bg {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+}
+.hero-copy { text-align: center; max-width: 860px; margin: 0 auto; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 8px; border-radius: 999px;
+  border: 1px solid var(--night-border); background: rgba(255, 255, 255, .05);
+  font-size: 13.5px; color: var(--night-muted);
+}
+.pill b { background: var(--brand); color: #fff; font-weight: 600; font-size: 12px; padding: 2px 9px; border-radius: 999px; }
+.hero h1 { font-size: clamp(38px, 6.4vw, 72px); font-weight: 800; margin: 22px 0 20px; color: #fff; }
+.hero h1 em {
+  font-style: normal; background: linear-gradient(90deg, #7fb0ff, #a58bff 60%, #c9b8ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero .lead { font-size: clamp(17px, 2vw, 20px); color: var(--night-muted); max-width: 660px; margin: 0 auto; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 34px; }
+.trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 26px; margin-top: 26px; font-size: 14px; color: var(--night-muted); }
+.trust span { display: inline-flex; align-items: center; gap: 7px; }
+.trust svg.i { width: 17px; height: 17px; color: #6ee7a1; }
+
+.stage { position: relative; margin: 64px auto 0; max-width: 1060px; }
+.window {
+  border-radius: 14px 14px 0 0; overflow: hidden; background: #1a2030;
+  border: 1px solid rgba(255, 255, 255, .14); border-bottom: 0;
+  box-shadow: 0 -10px 80px rgba(79, 99, 246, .35), var(--shadow-lg);
+}
+.window .bar { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; background: #20283b; border-bottom: 1px solid rgba(255,255,255,.07); }
+.window .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a4560; }
+.window .bar i:nth-child(1) { background: #ff5f57; } .window .bar i:nth-child(2) { background: #febc2e; } .window .bar i:nth-child(3) { background: #28c840; }
+.window .bar span { margin-left: 10px; font-size: 12.5px; color: #8e99b4; }
+.window video { width: 100%; aspect-ratio: 1280 / 800; object-fit: cover; background: #0d1222; }
+.float {
+  position: absolute; border-radius: 14px; background: rgba(20, 27, 49, .82); border: 1px solid var(--night-border);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  color: var(--night-text); font-size: 13.5px; padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+  animation: bob 6s ease-in-out infinite;
+}
+.float .dot { width: 9px; height: 9px; border-radius: 50%; background: #34c46a; box-shadow: 0 0 0 4px rgba(52,196,106,.2); }
+.float b { font-weight: 600; }
+.float.f1 { left: -46px; top: 66%; }
+.float.f2 { right: -34px; top: -22px; animation-delay: -3s; }
+.float.f2 svg.i { color: #9db8ff; }
+@keyframes bob { 50% { transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .float { animation: none; } }
+@media (max-width: 1160px) { .float.f1 { left: 12px; top: auto; bottom: 18px; } .float.f2 { right: 12px; top: -22px; } }
+@media (max-width: 640px) { .float { display: none; } .stage { margin-top: 44px; } }
+
+/* ───── stats strip ───── */
+.stats { background: var(--bg-elev); border-bottom: 1px solid var(--border); }
+.stats .wrap { display: grid; grid-template-columns: repeat(4, 1fr); }
+.stat { padding: 30px 12px; text-align: center; }
+.stat + .stat { border-left: 1px solid var(--border); }
+.stat strong { display: block; font: 800 clamp(26px, 3.4vw, 36px)/1.1 var(--font-display); letter-spacing: -0.02em;
+  background: var(--brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.stat span { font-size: 14px; color: var(--text-muted); }
+@media (max-width: 720px) {
+  .stats .wrap { grid-template-columns: repeat(2, 1fr); }
+  .stat:nth-child(3) { border-left: 0; }
+  .stat:nth-child(n+3) { border-top: 1px solid var(--border); }
+}
+
+/* ───── sections ───── */
+section.block { padding: clamp(72px, 10vw, 120px) 0; }
+.head { text-align: center; max-width: 720px; margin: 0 auto clamp(40px, 6vw, 64px); }
+.eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+.head h2 { font-size: clamp(30px, 4.4vw, 46px); font-weight: 800; }
+.head p { margin-top: 16px; font-size: 18px; color: var(--text-muted); }
+
+/* how it works */
+.how { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(32px, 5vw, 64px); align-items: center; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.steps li { display: flex; gap: 18px; padding: 22px; border-radius: var(--radius); background: var(--bg-elev); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.steps .n { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--brand); color: #fff; font: 700 17px var(--font-display); }
+.steps h3 { font-size: 18px; margin-bottom: 4px; }
+.steps p { color: var(--text-muted); font-size: 15px; }
+.steps code { font-family: var(--mono); font-size: 14px; background: var(--accent-soft); color: var(--accent); padding: 1px 7px; border-radius: 6px; }
+.shot { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--bg-elev); box-shadow: var(--shadow-lg); }
+.shot video, .shot img { width: 100%; height: auto; }
+.caption { margin-top: 14px; text-align: center; font-size: 14px; color: var(--text-faint); }
+@media (max-width: 900px) { .how { grid-template-columns: 1fr; } .how .media { order: -1; } }
+
+/* features bento */
+.bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; }
+.card {
+  position: relative; overflow: hidden; grid-column: span 2;
+  padding: 28px; border-radius: var(--radius-lg); background: var(--bg-elev); border: 1px solid var(--border); box-shadow: var(--shadow);
+  transition: transform .2s ease, border-color .2s ease;
+}
+.card:hover { transform: translateY(-3px); border-color: var(--border-strong); }
+.card.wide { grid-column: span 3; }
+.card .ic { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 18px; }
+.card .ic svg.i { width: 23px; height: 23px; }
+.card h3 { font-size: 19px; margin-bottom: 8px; }
+.card p { color: var(--text-muted); font-size: 15px; }
+.card .art { margin: 22px -28px -28px; border-top: 1px solid var(--border); background: var(--bg-sunken); padding: 22px 28px; }
+.card .art img { border-radius: 12px; box-shadow: var(--shadow); margin: 0 auto; }
+.kbd { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: center; color: var(--text-muted); font-size: 14px; }
+.kbd kbd { font: 600 14px var(--mono); padding: 7px 11px; border-radius: 9px; background: var(--bg-elev); border: 1px solid var(--border-strong); border-bottom-width: 3px; color: var(--text); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chips span { font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: var(--bg-elev); border: 1px solid var(--border); color: var(--text-muted); }
+.chips span.on { color: var(--success); background: var(--success-soft); border-color: transparent; }
+@media (max-width: 980px) { .bento { grid-template-columns: repeat(2, 1fr); } .card, .card.wide { grid-column: span 1; } .card.full { grid-column: 1 / -1; } }
+@media (max-width: 620px) { .bento { grid-template-columns: 1fr; } .card.full { grid-column: auto; } }
+
+/* security (night) */
+.night { background: var(--night); color: var(--night-text); position: relative; overflow: hidden; isolation: isolate; }
+.night::before { content: ""; position: absolute; z-index: -1; width: 700px; height: 700px; right: -260px; bottom: -320px; border-radius: 50%; background: var(--glow-b); filter: blur(110px); }
+.night .head p { color: var(--night-muted); }
+.night .eyebrow { color: #9db8ff; }
+.sec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.sec div { padding: 26px; border-radius: var(--radius); background: var(--night-elev); border: 1px solid var(--night-border); }
+.sec svg.i { width: 26px; height: 26px; color: #9db8ff; margin-bottom: 14px; }
+.sec h3 { font-size: 17px; margin-bottom: 8px; color: #fff; }
+.sec p { font-size: 14.5px; color: var(--night-muted); }
+.sec code { font-family: var(--mono); font-size: 13px; color: #c9d6ff; }
+@media (max-width: 900px) { .sec { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .sec { grid-template-columns: 1fr; } }
+
+/* gallery */
+.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.gallery figure { margin: 0; }
+.gallery figcaption { margin-top: 14px; font-size: 15px; color: var(--text-muted); }
+.gallery figcaption b { color: var(--text); display: block; font-size: 16px; margin-bottom: 2px; }
+@media (max-width: 820px) { .gallery { grid-template-columns: 1fr; } }
+
+/* download */
+.dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.os {
+  display: flex; flex-direction: column; padding: 30px; border-radius: var(--radius-lg);
+  background: var(--bg-elev); border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.os.main { border: 2px solid transparent; background: linear-gradient(var(--bg-elev), var(--bg-elev)) padding-box, var(--brand) border-box; }
+.os .logo { width: 48px; height: 48px; margin-bottom: 18px; color: var(--text); }
+.os h3 { font-size: 22px; }
+.os .meta { color: var(--text-faint); font-size: 14px; margin: 4px 0 18px; }
+.os ul { list-style: none; padding: 0; margin: 0 0 24px; display: grid; gap: 8px; font-size: 14.5px; color: var(--text-muted); }
+.os li { display: flex; gap: 9px; align-items: flex-start; }
+.os li svg.i { width: 18px; height: 18px; color: var(--success); margin-top: 3px; }
+.os .actions { margin-top: auto; display: grid; gap: 10px; }
+.os .btn { width: 100%; }
+.soon { display: inline-flex; align-self: flex-start; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-bottom: 12px; }
+.os .btn[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+.note { margin-top: 26px; text-align: center; font-size: 14px; color: var(--text-faint); }
+@media (max-width: 900px) { .dl { grid-template-columns: 1fr; max-width: 520px; margin: 0 auto; } }
+
+/* faq */
+.faq { max-width: 820px; margin: 0 auto; display: grid; gap: 12px; }
+.faq details { border-radius: var(--radius); background: var(--bg-elev); border: 1px solid var(--border); padding: 0 24px; }
+.faq details[open] { box-shadow: var(--shadow); }
+.faq summary { list-style: none; cursor: pointer; padding: 20px 0; display: flex; justify-content: space-between; gap: 16px; align-items: center; font-weight: 600; font-size: 16.5px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: 20px; font-weight: 500; transition: transform .2s ease; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details p { padding: 0 0 22px; color: var(--text-muted); font-size: 15.5px; }
+
+/* final cta */
+.final { padding: 0 0 clamp(72px, 10vw, 120px); }
+.final .box {
+  position: relative; overflow: hidden; isolation: isolate; text-align: center; border-radius: 28px;
+  padding: clamp(44px, 7vw, 80px) clamp(22px, 5vw, 60px); background: var(--brand); color: #fff;
+}
+.final .box::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(circle at 20% 0%, rgba(255,255,255,.28), transparent 50%), radial-gradient(circle at 90% 100%, rgba(15,23,42,.35), transparent 55%); }
+.final h2 { font-size: clamp(28px, 4.4vw, 44px); font-weight: 800; }
+.final p { margin: 14px auto 30px; max-width: 560px; font-size: 18px; color: rgba(255,255,255,.86); }
+.final .btn.white { background: #fff; color: #2b3fd6; box-shadow: 0 14px 34px -10px rgba(15,23,42,.6); }
+.final .btn.white:hover { transform: translateY(-1px); }
+.final .btn.clear { color: #fff; border-color: rgba(255,255,255,.45); }
+.final .btn.clear:hover { background: rgba(255,255,255,.12); }
+
+/* footer */
+footer { border-top: 1px solid var(--border); padding: 40px 0 calc(40px + env(safe-area-inset-bottom)); color: var(--text-muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 18px 32px; align-items: center; justify-content: space-between; }
+footer .brand { color: var(--text); font-size: 17px; }
+footer .brand img { width: 28px; height: 28px; }
+footer nav { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+footer nav a { color: var(--text-muted); }
+footer nav a:hover { color: var(--accent); }
+
+/* reveal on scroll */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+.reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-user-x" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 13h6"/><path d="M9 17h4"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.8 7L3 21l2-6.2A8 8 0 1 1 21 12z"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
+  <symbol id="i-screens" viewBox="0 0 24 24"><rect x="2" y="4" width="13" height="10" rx="2"/><path d="M19 8h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-1"/><path d="M6 18h4"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="m16 13 5.2 3.1a.5.5 0 0 0 .8-.4V8.3a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-p2p" viewBox="0 0 24 24"><circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8"/><path d="m13 9 3 3-3 3"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.9a3.4 3.4 0 0 0-.9-2.6c3.1-.4 6.4-1.5 6.4-7A5.4 5.4 0 0 0 20 4.8 5 5 0 0 0 19.9 1S18.7.7 16 2.5a13.4 13.4 0 0 0-7 0C6.3.7 5.1 1 5.1 1A5 5 0 0 0 5 4.8a5.4 5.4 0 0 0-1.5 3.7c0 5.5 3.3 6.6 6.4 7a3.4 3.4 0 0 0-.9 2.6V22"/></symbol>
+</svg>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="logo.svg" alt="">PairDesk</a>
+    <ul>
+      <li><a href="#comment">Comment ça marche</a></li>
+      <li><a href="#fonctions">Fonctionnalités</a></li>
+      <li><a href="#securite">Sécurité</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+    <a class="btn primary" href="#telecharger"><svg class="i"><use href="#i-download"/></svg>Télécharger</a>
+  </div>
+</header>
+
+<main id="top">
+  <!-- ───── hero ───── -->
+  <section class="hero">
+    <div class="grid-bg"></div>
+    <div class="wrap">
+      <div class="hero-copy">
+        <span class="pill"><b>Nouveau</b> Version 1.2 · copier-coller entre les PC et webcam du téléphone</span>
+        <h1>Prenez la main sur n'importe quel PC, <em>en quelques secondes.</em></h1>
+        <p class="lead">PairDesk vous connecte à l'écran d'un autre ordinateur pour aider un proche, dépanner un collègue ou retrouver vos fichiers. Un ID, un mot de passe, et c'est parti.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe"><svg class="i"><use href="#i-download"/></svg>Télécharger pour Windows <small>gratuit</small></a>
+          <a class="btn ghost" href="#telecharger">Linux et autres versions</a>
+        </div>
+        <div class="trust">
+          <span><svg class="i"><use href="#i-check"/></svg>100 % gratuit</span>
+          <span><svg class="i"><use href="#i-check"/></svg>Sans compte à créer</span>
+          <span><svg class="i"><use href="#i-check"/></svg>Chiffré de bout en bout</span>
+          <span><svg class="i"><use href="#i-check"/></svg>Code source public</span>
+        </div>
+      </div>
+
+      <div class="stage reveal">
+        <div class="window">
+          <div class="bar"><i></i><i></i><i></i><span>PairDesk — PC du bureau</span></div>
+          <video src="controle.mp4" poster="controle-poster.jpg" autoplay muted loop playsinline preload="auto" aria-label="Démonstration : un ordinateur contrôlé à distance avec PairDesk, on écrit dans un bloc-notes et on dessine"></video>
+        </div>
+        <div class="float f1"><span class="dot"></span><span><b>Délai ≈ 30 ms</b> · Direct (P2P)</span></div>
+        <div class="float f2"><svg class="i"><use href="#i-lock"/></svg><span><b>Session chiffrée</b> de bout en bout</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── stats ───── -->
+  <div class="stats">
+    <div class="wrap">
+      <div class="stat"><strong>≈ 30 ms</strong><span>de délai en direct</span></div>
+      <div class="stat"><strong>30 i/s</strong><span>image fluide (VP9)</span></div>
+      <div class="stat"><strong>0 €</strong><span>pas d'abonnement</span></div>
+      <div class="stat"><strong>0 compte</strong><span>à créer pour se connecter</span></div>
+    </div>
+  </div>
+
+  <!-- ───── how it works ───── -->
+  <section class="block" id="comment">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="eyebrow">Comment ça marche</span>
+        <h2>Connecté en trois étapes.</h2>
+        <p>Pas de configuration réseau, pas de port à ouvrir : PairDesk trouve le chemin tout seul.</p>
+      </div>
+      <div class="how">
+        <ol class="steps reveal">
+          <li><span class="n">1</span><div><h3>Installez PairDesk</h3><p>Sur votre ordinateur et sur celui de votre partenaire. L'installation prend moins d'une minute.</p></div></li>
+          <li><span class="n">2</span><div><h3>Échangez l'ID et le mot de passe</h3><p>Votre partenaire vous lit l'ID affiché sur son écran, par exemple <code>454 648 004</code>, et son mot de passe temporaire.</p></div></li>
+          <li><span class="n">3</span><div><h3>Prenez la main</h3><p>Saisissez l'ID, cliquez sur « Se connecter » : vous voyez son écran et utilisez sa souris et son clavier.</p></div></li>
+        </ol>
+        <div class="media reveal">
+          <div class="shot">
+            <video src="connexion.mp4" poster="connexion-poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="Démonstration : saisie de l'ID du partenaire et du mot de passe dans PairDesk"></video>
+          </div>
+          <p class="caption">La connexion, en temps réel.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── features ───── -->
+  <section class="block" id="fonctions" style="padding-top:0">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="eyebrow">Fonctionnalités</span>
+        <h2>Tout ce qu'il faut pour travailler à distance.</h2>
+        <p>Comme si vous étiez assis devant l'autre ordinateur, sans les complications.</p>
+      </div>
+      <div class="bento">
+        <article class="card wide reveal">
+          <div class="ic"><svg class="i"><use href="#i-zap"/></svg></div>
+          <h3>Fluide comme en local</h3>
+          <p>Image en 30 images par seconde et connexion directe entre les deux PC dès que possible : la souris suit votre main, sans décalage gênant.</p>
+          <div class="art"><div class="chips"><span class="on">● Direct (P2P)</span><span>30 i/s</span><span>VP9</span><span>Délai ≈ 30 ms</span></div></div>
+        </article>
+        <article class="card wide reveal">
+          <div class="ic"><svg class="i"><use href="#i-clip"/></svg></div>
+          <h3>Copier-coller d'un PC à l'autre</h3>
+          <p>Texte, mise en forme, images et même fichiers : copiez sur un ordinateur, collez sur l'autre, avec les raccourcis habituels.</p>
+          <div class="art"><div class="kbd"><kbd>Ctrl</kbd>+<kbd>C</kbd><span style="margin:0 6px">→</span><kbd>Ctrl</kbd>+<kbd>V</kbd></div></div>
+        </article>
+        <article class="card reveal">
+          <div class="ic"><svg class="i"><use href="#i-file"/></svg></div>
+          <h3>Glisser-déposer</h3>
+          <p>Faites glisser un fichier sur l'écran distant : il arrive exactement là où vous l'avez lâché, dans le bon dossier.</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic"><svg class="i"><use href="#i-chat"/></svg></div>
+          <h3>Discussion intégrée</h3>
+          <p>Échangez des messages pendant la session, sans téléphone ni autre application.</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic"><svg class="i"><use href="#i-screens"/></svg></div>
+          <h3>Plusieurs écrans</h3>
+          <p>Passez d'un écran à l'autre de l'ordinateur distant en un clic.</p>
+        </article>
+        <article class="card wide reveal">
+          <div class="ic"><svg class="i"><use href="#i-eye"/></svg></div>
+          <h3>Vous gardez toujours le contrôle</h3>
+          <p>Pendant une session, un panneau reste visible sur l'ordinateur contrôlé : on voit qui est connecté, on discute, on envoie un fichier, et on coupe tout d'un clic.</p>
+          <div class="art"><img src="panneau.png" width="380" height="177" alt="Panneau de session PairDesk : « Portable de Camille contrôle cet ordinateur », avec les boutons Discussion, Fichier et Terminer" loading="lazy"></div>
+        </article>
+        <article class="card wide reveal">
+          <div class="ic"><svg class="i"><use href="#i-camera"/></svg></div>
+          <h3>Votre téléphone devient une webcam</h3>
+          <p>Avec l'application mobile, la caméra de votre téléphone s'affiche sur le PC et apparaît comme webcam « PairDesk Camera » dans vos logiciels de visio (Windows).</p>
+          <div class="art"><div class="chips"><span>Teams</span><span>Zoom</span><span>Discord</span><span>Meet</span><span class="on">PairDesk Camera</span></div></div>
+        </article>
+        <article class="card reveal">
+          <div class="ic"><svg class="i"><use href="#i-key"/></svg></div>
+          <h3>Accès non surveillé</h3>
+          <p>Définissez un mot de passe personnel pour vous connecter à votre propre PC, même quand personne n'est devant.</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic"><svg class="i"><use href="#i-hand"/></svg></div>
+          <h3>Simple pour tout le monde</h3>
+          <p>Une interface claire, en français, pensée pour les personnes qui ne sont pas à l'aise avec l'informatique.</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic"><svg class="i"><use href="#i-refresh"/></svg></div>
+          <h3>Mises à jour automatiques</h3>
+          <p>PairDesk se met à jour tout seul : vous avez toujours la dernière version.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── security ───── -->
+  <section class="block night" id="securite">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="eyebrow">Sécurité</span>
+        <h2>Votre écran ne regarde que vous.</h2>
+        <p>Personne d'autre que vous et votre partenaire ne peut voir la session, pas même nous.</p>
+      </div>
+      <div class="sec">
+        <div class="reveal"><svg class="i"><use href="#i-lock"/></svg><h3>Chiffré de bout en bout</h3><p>Image, clavier, fichiers et messages passent par un canal chiffré (<code>DTLS</code>) établi directement entre les deux ordinateurs.</p></div>
+        <div class="reveal"><svg class="i"><use href="#i-shield"/></svg><h3>Mot de passe jamais transmis</h3><p>Le mot de passe est vérifié par un échange cryptographique (<code>CPace</code>) : il ne circule jamais sur le réseau, même chiffré.</p></div>
+        <div class="reveal"><svg class="i"><use href="#i-refresh"/></svg><h3>Mot de passe temporaire</h3><p>Un nouveau mot de passe à chaque démarrage, renouvelable d'un clic. Un ID seul ne suffit jamais pour entrer.</p></div>
+        <div class="reveal"><svg class="i"><use href="#i-p2p"/></svg><h3>Connexion directe</h3><p>Dès que le réseau le permet, les deux PC se parlent en pair à pair, sans serveur intermédiaire pour les données.</p></div>
+        <div class="reveal"><svg class="i"><use href="#i-user-x"/></svg><h3>Aucun compte, aucune donnée</h3><p>Pas d'inscription, pas d'e-mail, pas de publicité. Rien à revendre, rien à fuiter.</p></div>
+        <div class="reveal"><svg class="i"><use href="#i-code"/></svg><h3>Code source public</h3><p>Le code source est public sur GitHub : chacun peut vérifier ce que fait l'application.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── screenshots ───── -->
+  <section class="block" id="apercu">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="eyebrow">Aperçu</span>
+        <h2>Une application claire, sans détour.</h2>
+      </div>
+      <div class="gallery">
+        <figure class="reveal">
+          <div class="shot"><img src="accueil.jpg" width="1100" height="720" alt="Écran d'accueil de PairDesk : votre ID et votre mot de passe à gauche, la saisie de l'ID du partenaire à droite" loading="lazy"></div>
+          <figcaption><b>L'accueil</b>Votre ID et votre mot de passe d'un côté, l'ID de votre partenaire de l'autre.</figcaption>
+        </figure>
+        <figure class="reveal">
+          <div class="shot"><img src="controle.jpg" width="1280" height="800" alt="Fenêtre de contrôle à distance PairDesk : le bureau distant avec un bloc-notes et un dessin, la barre d'outils en haut" loading="lazy"></div>
+          <figcaption><b>Le contrôle à distance</b>L'écran distant, le délai et la qualité en direct, et tous les outils en haut.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── download ───── -->
+  <section class="block" id="telecharger" style="padding-top:0">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="eyebrow">Télécharger</span>
+        <h2>Gratuit. Pour de vrai.</h2>
+        <p>Pas de version d'essai, pas de fonctions bloquées, pas de carte bancaire. Version 1.2.0.</p>
+      </div>
+      <div class="dl">
+        <div class="os main reveal">
+          <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#2f62f5" d="M3 5.5 10.5 4.5v7H3zM11.5 4.4 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.4z"/></svg>
+          <h3>Windows</h3>
+          <p class="meta">Windows 10 et 11 · 64 bits · 100 Mo</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>Installation en un clic</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Webcam du téléphone incluse</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Mises à jour automatiques</li>
+          </ul>
+          <div class="actions">
+            <a class="btn primary" href="https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe"><svg class="i"><use href="#i-download"/></svg>Télécharger (.exe)</a>
+          </div>
+        </div>
+        <div class="os reveal">
+          <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2c-2.2 0-3.6 1.8-3.6 4.4 0 1.5.3 2.4-.6 3.8-1 1.5-3.3 3.8-3.3 6.7 0 .8.2 1.5.6 2-.6.4-1.6.9-1.5 1.8.2 1 2.6 1 4 1.2 1 .2 1.7.9 2.6.9.8 0 1.2-.5 1.8-.6.6.1 1 .6 1.8.6.9 0 1.6-.7 2.6-.9 1.4-.2 3.8-.2 4-1.2.1-.9-.9-1.4-1.5-1.8.4-.5.6-1.2.6-2 0-2.9-2.3-5.2-3.3-6.7-.9-1.4-.6-2.3-.6-3.8C15.6 3.8 14.2 2 12 2zm-1.3 4.2c.4 0 .7.5.7 1.1s-.3 1-.7 1-.7-.4-.7-1 .3-1.1.7-1.1zm2.6 0c.4 0 .7.5.7 1.1s-.3 1-.7 1-.7-.4-.7-1 .3-1.1.7-1.1zM12 9c.9 0 2 .6 2 1s-1.1 1.2-2 1.2-2-.8-2-1.2 1.1-1 2-1z"/></svg>
+          <h3>Linux</h3>
+          <p class="meta">Ubuntu, Debian, Fedora… · 64 bits</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>AppImage : sans installation</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Paquet .deb pour Ubuntu et Debian</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Session X11 (bureau classique)</li>
+          </ul>
+          <div class="actions">
+            <a class="btn line" href="https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-x86_64.AppImage"><svg class="i"><use href="#i-download"/></svg>AppImage</a>
+            <a class="btn line" href="https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-amd64.deb"><svg class="i"><use href="#i-download"/></svg>Paquet .deb</a>
+          </div>
+        </div>
+        <div class="os reveal">
+          <span class="soon">Bientôt</span>
+          <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#34a853" d="M6 9h12v8a1 1 0 0 1-1 1h-1v3a1.3 1.3 0 0 1-2.6 0v-3h-2.8v3A1.3 1.3 0 0 1 8 21v-3H7a1 1 0 0 1-1-1zM3.7 9a1.3 1.3 0 0 1 1.3 1.3v5.4a1.3 1.3 0 0 1-2.6 0v-5.4A1.3 1.3 0 0 1 3.7 9zm16.6 0a1.3 1.3 0 0 1 1.3 1.3v5.4a1.3 1.3 0 0 1-2.6 0v-5.4A1.3 1.3 0 0 1 20.3 9zM15.6 3.2l1.3-1.9a.3.3 0 0 0-.5-.3L15.1 3a6.6 6.6 0 0 0-6.2 0L7.6 1a.3.3 0 0 0-.5.3l1.3 1.9A5.6 5.6 0 0 0 6 8h12a5.6 5.6 0 0 0-2.4-4.8zM9.5 6.2a.7.7 0 1 1 0-1.4.7.7 0 0 1 0 1.4zm5 0a.7.7 0 1 1 0-1.4.7.7 0 0 1 0 1.4z"/></svg>
+          <h3>Android</h3>
+          <p class="meta">Version 1.2.1 · en préparation</p>
+          <ul>
+            <li><svg class="i"><use href="#i-check"/></svg>Contrôlez votre PC depuis le téléphone</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Le téléphone comme webcam du PC</li>
+            <li><svg class="i"><use href="#i-check"/></svg>Installation par QR code depuis l'appli PC</li>
+          </ul>
+          <div class="actions">
+            <a class="btn line" aria-disabled="true" tabindex="-1">Disponible prochainement</a>
+          </div>
+        </div>
+      </div>
+      <p class="note">Toutes les versions et l'historique des changements sont sur <a href="https://github.com/Azukkia/PairDesk/releases">GitHub</a>.</p>
+    </div>
+  </section>
+
+  <!-- ───── faq ───── -->
+  <section class="block" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="eyebrow">Questions fréquentes</span>
+        <h2>Vous vous demandez peut-être…</h2>
+      </div>
+      <div class="faq reveal">
+        <details open>
+          <summary>PairDesk est-il vraiment gratuit ?</summary>
+          <p>Oui. Toutes les fonctions sont disponibles gratuitement, sans limite de durée ni de nombre de connexions, pour un usage personnel comme professionnel.</p>
+        </details>
+        <details>
+          <summary>Faut-il installer PairDesk sur les deux ordinateurs ?</summary>
+          <p>Oui : celui qui aide et celui qui est aidé installent PairDesk. Il n'y a rien d'autre à configurer, ni compte à créer, ni port à ouvrir sur la box.</p>
+        </details>
+        <details>
+          <summary>Quelqu'un peut-il se connecter à mon PC sans que je le sache ?</summary>
+          <p>Non. Il faut votre ID <em>et</em> votre mot de passe, qui change à chaque démarrage. Pendant toute la session, un panneau reste affiché sur votre écran avec le nom de la personne connectée et un bouton « Terminer ». Vous pouvez aussi désactiver complètement les connexions entrantes.</p>
+        </details>
+        <details>
+          <summary>Est-ce que ça marche entre Windows et Linux ?</summary>
+          <p>Oui, un PC sous Windows peut contrôler un PC sous Linux et inversement. La version Android arrive bientôt.</p>
+        </details>
+        <details>
+          <summary>Et si les deux ordinateurs sont sur des réseaux différents ?</summary>
+          <p>Aucun problème : PairDesk fonctionne à travers Internet, d'une maison à l'autre, du bureau au domicile, en Wi-Fi comme en 4G. Il choisit automatiquement le chemin le plus rapide.</p>
+        </details>
+        <details>
+          <summary>Puis-je accéder à mon propre PC quand je ne suis pas devant ?</summary>
+          <p>Oui, avec l'accès non surveillé : définissez un mot de passe personnel dans PairDesk, et connectez-vous à votre ordinateur depuis n'importe où.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── final cta ───── -->
+  <section class="final">
+    <div class="wrap">
+      <div class="box reveal">
+        <h2>Prêt à prendre la main ?</h2>
+        <p>Téléchargez PairDesk et connectez-vous à votre premier ordinateur dans moins de deux minutes.</p>
+        <div class="cta" style="margin-top:0">
+          <a class="btn white" href="https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe"><svg class="i"><use href="#i-download"/></svg>Télécharger pour Windows</a>
+          <a class="btn clear" href="#telecharger">Autres plateformes</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="logo.svg" alt="">PairDesk</a>
+    <nav>
+      <a href="#comment">Comment ça marche</a>
+      <a href="#fonctions">Fonctionnalités</a>
+      <a href="#securite">Sécurité</a>
+      <a href="#telecharger">Télécharger</a>
+      <a href="https://github.com/Azukkia/PairDesk">Code source</a>
+    </nav>
+    <span>© 2026 PairDesk · Gratuit · code source public</span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('solid', window.scrollY > 24);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  const items = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) { items.forEach((el) => el.classList.add('in')); return; }
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+  items.forEach((el) => io.observe(el));
+
+  // Videos only play while visible (battery, phones).
+  const vids = document.querySelectorAll('video');
+  const vo = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) e.target.play().catch(() => {});
+      else e.target.pause();
+    }
+  }, { threshold: 0.2 });
+  vids.forEach((v) => vo.observe(v));
+})();
+</script>
+</body>
+</html>
