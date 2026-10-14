@@ -68,6 +68,9 @@ export class ClipboardBridge {
     switch (msg?.type) {
       case 'clipboard':
         if (!this.enabled()) return true;
+        // The partner copied something newer: our copied files must no
+        // longer replace it on Ctrl+V or focus.
+        this.outbox = null;
         if (typeof msg.cid === 'string' && Array.isArray(msg.files) && msg.files.length) {
           if (!this.filesAllowed()) return true;
           this.inbox = { cid: msg.cid, files: msg.files, total: Number(msg.total) || 0, fetched: false };

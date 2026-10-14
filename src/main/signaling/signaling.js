@@ -196,7 +196,12 @@ export class Signaling extends EventEmitter {
     const ya = unb64(data.ya);
     if (!ya || ya.length !== 32) return this.#deny(from, sid, 'protocol');
     const credentials = this.getCredentials();
-    if (!credentials.length) return this.#deny(from, sid, 'disabled');
+    // No password at all on this computer (neither a temporary nor a
+    // readable personal one): say so, rather than "incoming disabled".
+    if (!credentials.length) {
+      this.log?.warn('[signaling] incoming connection refused: no active password');
+      return this.#deny(from, sid, 'no-password');
+    }
 
     const ci = channelIdentifier(from, this.myId);
     const candidates = [];

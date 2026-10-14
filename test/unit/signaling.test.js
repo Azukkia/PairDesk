@@ -109,7 +109,7 @@ test('busy / disabled hosts refuse before authentication', async () => {
   const busy = setup({ canAccept: () => 'busy' });
   await assert.rejects(busy.ctrl.connect(HOST, busy.temp), { code: 'busy' });
   const none = setup({ hostCreds: [] });
-  await assert.rejects(none.ctrl.connect(HOST, randomBytes(32)), { code: 'disabled' });
+  await assert.rejects(none.ctrl.connect(HOST, randomBytes(32)), { code: 'no-password' });
 });
 
 test('host can ask its user and then reject', async () => {

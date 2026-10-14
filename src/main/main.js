@@ -438,7 +438,7 @@ async function main() {
   handle('files:begin', SESSION, (ctx, { name, size, drop, clip } = {}) => {
     if (clip) {
       // Clipboard content (image, copied files): into a staging folder.
-      const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name)) : null;
+      const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name), Number(size)) : null;
       if (!accepted) return { ok: false, error: 'disabled' };
       try {
         const res = files.begin(ctx.sid, accepted.name, Number(size), { directory: accepted.directory });

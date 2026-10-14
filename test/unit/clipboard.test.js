@@ -174,7 +174,8 @@ test('clipboard transfers: text now, image when it arrives, legacy text', async 
   receiver.remote(ctx, { cid: 'c1', text: 'caption', html: '<img>', image: { size: 3 } });
   await wait(0);
   assert.deepEqual(written.at(-1), { text: 'caption', html: '<img>' });
-  const acc = receiver.accept(ctx, { cid: 'c1', kind: 'image', n: 1 }, 'clipboard.png');
+  const acc = receiver.accept(ctx, { cid: 'c1', kind: 'image', n: 1 }, 'clipboard.png', 3);
+  assert.equal(receiver.accept(ctx, { cid: 'c1', kind: 'image', n: 1 }, 'clipboard.png', 3), null, 'one image per announcement');
   const file = path.join(acc.directory, acc.name);
   fs.writeFileSync(file, 'PNG');
   receiver.track('t', ctx, 'c1', acc);

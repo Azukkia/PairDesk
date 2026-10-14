@@ -182,14 +182,16 @@ export class ClipboardTransfers {
    * Incoming clipboard file offer (`clip` = {cid, kind, rel, n}). Returns the
    * folder and name to receive it in, or null to refuse it.
    */
-  accept(ctx, clip, name) {
+  accept(ctx, clip, name, size = 0) {
     const entry = this.inbound.get(ctx);
     if (!entry || !clip || clip.cid !== entry.cid) return null;
     if (!entry.dir) {
       entry.dir = path.join(this.stagingRoot, `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
     }
     if (clip.kind === 'image') {
-      if (!entry.image) return null;
+      // One image per announcement, of a sensible size.
+      if (!entry.image || !(Number(size) <= MAX_IMAGE_BYTES)) return null;
+      entry.image = false;
       fs.mkdirSync(entry.dir, { recursive: true });
       return { directory: entry.dir, name: 'clipboard.png', kind: 'image' };
     }
