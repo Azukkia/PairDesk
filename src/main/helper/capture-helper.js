@@ -68,18 +68,45 @@ function tick(cur) {
       fail(cur, err);
       return;
     }
-    if (frame) {
-      cur.port.postMessage({
-        type: 'frame', width: cur.cap.width, height: cur.cap.height, stride: cur.cap.stride, format: cur.cap.format || 'BGRX', data: frame,
-      });
-      cur.inFlight++;
-      cur.sentAt = performance.now();
-      cur.frames++;
-    }
+    if (frame) send(cur, frame);
   }
   const interval = 1000 / cur.fps;
   // Next picture one interval after this one started (no drift).
   cur.timer = setTimeout(() => tick(cur), Math.max(1, interval - (performance.now() - start)));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Backends that wait for changes themselves (Desktop Duplication): a picture
+// leaves as soon as the screen changed, at most `fps` times a second.
+async function loop(cur) {
+  while (!cur.stopped) {
+    const wait = cur.sentAt + 1000 / cur.fps - performance.now();
+    if (wait > 1) await sleep(wait);
+    if (cur.inFlight >= MAX_IN_FLIGHT) {
+      // A lost acknowledgement must not stop the picture for good.
+      if (performance.now() - cur.sentAt > 1000) cur.inFlight = 0;
+      else await sleep(4);
+      continue;
+    }
+    let frame;
+    try {
+      frame = await cur.cap.grabAsync(100);
+    } catch (err) {
+      fail(cur, err);
+      return;
+    }
+    if (frame && !cur.stopped) send(cur, frame);
+  }
+}
+
+function send(cur, frame) {
+  cur.port.postMessage({
+    type: 'frame', width: cur.cap.width, height: cur.cap.height, stride: cur.cap.stride, format: cur.cap.format || 'BGRX', data: frame,
+  });
+  cur.inFlight++;
+  cur.sentAt = performance.now();
+  cur.frames++;
 }
 
 async function start({ id, rect, fps, dll }, port) {
@@ -107,7 +134,8 @@ async function start({ id, rect, fps, dll }, port) {
   }
   log('info', `[capture] ${rect.width}x${rect.height} at (${rect.x}, ${rect.y}), ${cur.fps} fps → ${cur.cap.width}x${cur.cap.height}`);
   parent.postMessage({ type: 'started', id, ok: true, width: cur.cap.width, height: cur.cap.height });
-  tick(cur);
+  if (cur.cap.grabAsync) loop(cur);
+  else tick(cur);
 }
 
 parent.on('message', (e) => {

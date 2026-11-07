@@ -86,6 +86,9 @@ jobs:
       - name: Build the "PairDesk Camera" webcam (Windows)
         if: runner.os == 'Windows'
         run: npm run build:camera
+      - name: Build the screen capture without cursor (Windows)
+        if: runner.os == 'Windows'
+        run: npm run build:capture
       - name: Build and upload to the draft release
         run: npx electron-builder ${{ matrix.args }} --publish always
         env:

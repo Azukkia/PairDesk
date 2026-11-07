@@ -53,6 +53,11 @@ win:
       to: camera
       filter:
         - PairDeskCamera.dll
+    # The screen capture without cursor (npm run build:capture).
+    - from: native/bin/win32-x64
+      to: capture
+      filter:
+        - PairDeskCapture.dll
   artifactName: PairDesk-Setup-${version}.${ext}
 
 nsis:

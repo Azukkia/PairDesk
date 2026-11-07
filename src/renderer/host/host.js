@@ -155,6 +155,8 @@ async function capture(display, withAudio, fps = captureFps) {
   if (nativeCapture) {
     try {
       const native = await startNativeCapture(api, { displayId: display.displayId, fps, onFailure: onNativeFailure });
+      // Large screens come already halved: the encoder scales down less.
+      native.track.pairdeskScale = display.width / native.width;
       const tracks = [native.track];
       if (withAudio) {
         const audio = await captureDesktopAudio(display.sourceId).catch((err) => console.warn('audio capture unavailable', err.message));
@@ -239,7 +241,7 @@ async function applyQuality(mode) {
   Object.assign(params.encodings[0], {
     maxBitrate: preset.maxBitrate,
     maxFramerate: preset.maxFramerate,
-    scaleResolutionDownBy: currentScale(),
+    scaleResolutionDownBy: Math.max(1, currentScale() / (videoSender.track.pairdeskScale || 1)),
   });
   params.degradationPreference = preset.degradation;
   try {

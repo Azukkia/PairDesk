@@ -60,6 +60,8 @@ jobs:
         run: npm test
       - name: Build the "PairDesk Camera" webcam (DirectShow filter)
         run: npm run build:camera
+      - name: Build the screen capture without cursor (Desktop Duplication)
+        run: npm run build:capture
       - name: End-to-end test (real Windows desktop, SendInput)
         run: npm run test:e2e
         env:
