@@ -82,9 +82,31 @@ function renderBanners() {
       h('div', { class: 'text' }, h('b', null, t(key, { name: incoming.peerName })), h('span', { class: 'small muted' }, `ID ${formatId(incoming.peerId)}`)),
       h('button', { class: 'btn danger', onclick: () => api.invoke('session:end-incoming') }, icon('power', 'sm'), t('home.endSession'))));
   }
+  const permissions = permissionsBanner();
+  if (permissions) list.push(permissions);
   const banner = updateBanner(true);
   if (banner) list.push(banner);
   clear(els.banners, list);
+}
+
+// macOS: the privacy permissions needed to be controlled (re-checked each
+// time the window gets the focus back, e.g. from System Settings).
+function permissionsBanner() {
+  const p = state.permissions;
+  if (!p || !state.settings.allowIncoming) return null;
+  const row = (text, button) => h('div', { class: 'perm-row' }, h('span', { class: 'small' }, text), button);
+  const open = (kind) => h('button', { class: 'btn small', dataset: { perm: kind }, onclick: () => api.invoke('app:open-privacy', kind) },
+    icon('external', 'sm'), t('perm.open'));
+  const rows = [];
+  if (p.restart) {
+    rows.push(row(t('perm.restart'), h('button', { class: 'btn small', onclick: () => api.invoke('app:relaunch') }, icon('refresh', 'sm'), t('perm.restartButton'))));
+  } else if (p.screen !== 'granted') {
+    rows.push(row(t('perm.screen'), open('screen')));
+  }
+  if (!p.accessibility && state.settings.allowControl) rows.push(row(t('perm.accessibility'), open('accessibility')));
+  if (!rows.length) return null;
+  return h('div', { class: 'banner warning', id: 'permissions-banner' }, icon('shield', 'lg'),
+    h('div', { class: 'text' }, h('b', null, t('perm.title')), rows, p.restart && rows.length === 1 ? null : h('span', { class: 'small muted' }, t('perm.hint'))));
 }
 
 function updateBanner(compact) {
@@ -94,7 +116,7 @@ function updateBanner(compact) {
   let progress = null;
   if (u.status === 'available') {
     text = t('update.available', { version: u.version });
-    actions.push(h('button', { class: 'btn solid', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t('update.download')));
+    actions.push(h('button', { class: 'btn solid', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t(u.manual ? 'update.downloadMac' : 'update.download')));
   } else if (u.status === 'downloading') {
     text = t('update.downloading', { progress: u.progress });
     progress = h('div', { class: 'progress' }, h('div', { style: { width: `${u.progress}%` } }));
@@ -448,7 +470,7 @@ function SettingsPage() {
     settingRow(t('settings.language'), null, select('language', [['auto', t('language.auto')], ['fr', t('language.fr')], ['en', t('language.en')]])),
     settingRow(t('settings.theme'), null, select('theme', [['system', t('theme.system')], ['light', t('theme.light')], ['dark', t('theme.dark')]])),
     settingRow(t('settings.launchAtStartup'), null, toggle('launchAtStartup')),
-    settingRow(t('settings.closeToTray'), null, toggle('closeToTray')));
+    settingRow(t(state.platform === 'darwin' ? 'settings.closeToTrayMac' : 'settings.closeToTray'), null, toggle('closeToTray')));
 
   const security = h('section', { class: 'card settings-section' },
     h('h2', null, icon('lock'), t('settings.security')),
@@ -610,7 +632,9 @@ function AboutPage() {
         case 'up-to-date': text = t('update.upToDate'); break;
         case 'available':
           text = t('update.available', { version: u.version });
-          action = h('button', { class: 'btn primary', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t('update.download'));
+          // macOS: the new version is downloaded in the browser and installed by hand.
+          if (u.manual) text = h('div', null, text, h('div', { class: 'small muted' }, t('update.manualHint')));
+          action = h('button', { class: 'btn primary', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t(u.manual ? 'update.downloadMac' : 'update.download'));
           break;
         case 'downloading': text = t('update.downloading', { progress: u.progress }); busy = true; break;
         case 'downloaded':

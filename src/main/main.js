@@ -4,9 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  app, ClipboardItem, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, safeStorage, session, shell,
+  app, ClipboardItem, Menu, Notification, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, safeStorage, session, shell,
+  systemPreferences,
 } from 'electron';
 import { log, initLogFile } from './log.js';
+import { createPermissions } from './permissions.js';
+import { setMacMenu } from './macos.js';
 import { loadConfig } from './config.js';
 import { Settings } from './settings.js';
 import { Network } from './network.js';
@@ -21,6 +24,7 @@ import { InputService } from './input-service.js';
 import { clipboardSequence, createClipboardFiles } from './clipboard-native.js';
 import { ClipboardTransfers } from './clipboard-transfer.js';
 import { VirtualCamera } from './camera/virtual-camera.js';
+import { NativeCapture } from './capture/native-capture.js';
 import { qrRows } from './qr.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
 import { MIN_PERMANENT_PASSWORD_LENGTH, normalizeId, isValidId } from '../shared/protocol.js';
@@ -61,6 +65,15 @@ if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
 
 const startHidden = process.argv.includes('--hidden');
 let quitting = false;
+
+// macOS hands pairdesk:// links over with "open-url", before "ready" when a
+// link starts PairDesk: kept until the main window can take them.
+const openedUrls = [];
+let onOpenUrl = (url) => openedUrls.push(url);
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  onOpenUrl(url);
+});
 
 function extractDeepLink(argv) {
   const link = argv.find((a) => /^pairdesk:/i.test(a));
@@ -134,6 +147,8 @@ async function main() {
   nativeTheme.themeSource = settings.get('theme');
 
   registerAppProtocol();
+  // macOS privacy permissions needed to be controlled (null elsewhere).
+  const permissions = createPermissions({ systemPreferences, desktopCapturer, openExternal: (url) => shell.openExternal(url), log });
 
   const input = new InputService({ appPath, log });
   await input.start();
@@ -142,6 +157,7 @@ async function main() {
   });
   const clipTransfers = new ClipboardTransfers({ clipboard: clipboardSync, log });
   clipTransfers.cleanup();
+  setInterval(() => clipTransfers.sweep(), 10 * 60_000);
   const downloadsDir = () => process.env.PAIRDESK_DOWNLOADS_DIR || path.join(app.getPath('downloads'), 'PairDesk');
   const files = new FileReceiver({ getDirectory: downloadsDir, log });
 
@@ -160,7 +176,7 @@ async function main() {
     onMainHidden: () => {
       if (!settings.get('trayHintShown')) {
         settings.set('trayHintShown', true);
-        notify(t('tray.hintTitle'), t('tray.hintBody'));
+        notify(t('tray.hintTitle'), t(process.platform === 'darwin' ? 'tray.hintBodyMac' : 'tray.hintBody'));
       }
     },
   });
@@ -168,8 +184,9 @@ async function main() {
   let sessions;
   const network = new Network({ settings, config, log, canAccept: () => sessions.canAccept() });
   const virtualCamera = new VirtualCamera({ appPath, resourcesPath: process.resourcesPath, packaged: app.isPackaged, log });
+  const nativeCapture = new NativeCapture({ appPath, resourcesPath: process.resourcesPath, packaged: app.isPackaged, log });
   sessions = new SessionManager({
-    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, virtualCamera, log, appVersion: app.getVersion(), notify,
+    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, virtualCamera, nativeCapture, log, appVersion: app.getVersion(), notify,
     // The translator changes with the language setting.
     t: (key, vars) => t(key, vars),
   });
@@ -182,8 +199,12 @@ async function main() {
     log,
   });
   drops.cleanup();
+  sessions.permissions = permissions;
+  sessions.on('host-ended', (sid) => drops.endSession(sid));
 
-  const updater = new Updater({ log, isPackaged: app.isPackaged, currentVersion: app.getVersion() });
+  const updater = new Updater({
+    log, isPackaged: app.isPackaged, currentVersion: app.getVersion(), fetch: (url, opts) => net.fetch(url, opts), openExternal: (url) => shell.openExternal(url),
+  });
 
   // ───────────── state pushed to the main window ─────────────
 
@@ -205,6 +226,7 @@ async function main() {
     update: updater.state,
     sessions: sessions.summary(),
     input: { available: input.available, reason: input.reason || null },
+    permissions: permissions.status(),
     lockedFor: network.limiter.lockedFor(),
   });
   let pushTimer = null;
@@ -245,6 +267,10 @@ async function main() {
     sessions.endAll();
     settings.saveNow();
   });
+  // Back from System Settings: the macOS permissions may have changed.
+  app.on('browser-window-focus', (_e, win) => {
+    if (win === windows.main) pushState();
+  });
 
   const applyLaunchAtStartup = (enabled) => {
     if (!app.isPackaged || E2E) return;
@@ -260,6 +286,7 @@ async function main() {
           fs.rmSync(file, { force: true });
         }
       } else {
+        // macOS login items take no arguments: PairDesk starts with its window there.
         app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] });
       }
     } catch (err) {
@@ -273,6 +300,7 @@ async function main() {
       lang = resolveLanguage(settings.get('language'), app.getLocale());
       t = createTranslator(lang);
       tray?.refresh(t);
+      refreshMenu();
     }
     if ('theme' in changed) nativeTheme.themeSource = settings.get('theme');
     if ('launchAtStartup' in changed) applyLaunchAtStartup(settings.get('launchAtStartup'));
@@ -349,6 +377,12 @@ async function main() {
     return { url: config.androidApkUrl, qr: qrRows(config.androidApkUrl), available: apkAvailable };
   });
   handle('app:open-logs', ['main'], () => shell.openPath(path.dirname(log.file || app.getPath('userData'))));
+  handle('app:open-privacy', ['main'], (_ctx, kind) => permissions.open(String(kind)));
+  handle('app:relaunch', ['main'], () => {
+    quitting = true;
+    app.relaunch();
+    app.quit();
+  });
   handle('settings:update', ['main'], (_ctx, patch) => {
     settings.update(patch);
     return publicSettings();
@@ -415,8 +449,10 @@ async function main() {
   });
   handle('camera:attach', ['camera'], (ctx) => sessions.attachVirtualCamera(ctx));
   handle('camera:end', ['camera'], (ctx) => sessions.endSession(ctx.sid, 'camera-ended'));
+  handle('camera:consent', ['camera'], (ctx, accept) => sessions.cameraConsent(ctx.sid, Boolean(accept)));
   handle('host:consent', ['host'], (ctx, accept) => sessions.hostConsent(ctx.sid, Boolean(accept)));
   handle('host:displays', ['host'], () => sessions.listDisplays());
+  handle('capture:start', ['host'], (ctx, opts) => sessions.startNativeCapture(ctx, opts));
   on('host:set-display', ['host'], (ctx, displayId) => sessions.setHostDisplay(ctx, displayId));
   on('input:events', ['host'], (ctx, events) => sessions.injectInput(ctx, events));
   handle('host:end', ['host'], (ctx) => sessions.endSession(ctx.sid, 'host-ended'));
@@ -438,13 +474,14 @@ async function main() {
   handle('files:begin', SESSION, (ctx, { name, size, drop, clip } = {}) => {
     if (clip) {
       // Clipboard content (image, copied files): into a staging folder.
-      const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name), Number(size)) : null;
-      if (!accepted) return { ok: false, error: 'disabled' };
       try {
+        const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name), Number(size)) : null;
+        if (!accepted) return { ok: false, error: 'disabled' };
         const res = files.begin(ctx.sid, accepted.name, Number(size), { directory: accepted.directory });
         clipTransfers.track(res.token, ctx, clip.cid, accepted);
         return { ok: true, ...res, clip: accepted.kind };
       } catch (err) {
+        log.warn(`[clipboard] file refused: ${err.message}`); // e.g. "A" and folder "a/" on Windows
         return { ok: false, error: err.message };
       }
     }
@@ -490,6 +527,7 @@ async function main() {
   if (E2E) {
     handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...(await input.cursorPos()), shape: await input.cursorDebug() }));
     handle('e2e:vcam', ['main'], () => virtualCamera.stats());
+    handle('e2e:capture', ['main'], () => nativeCapture.stats());
   }
 
   // ───────────── start ─────────────
@@ -497,27 +535,36 @@ async function main() {
   network.start();
   sessions.attach(network.signaling);
   windows.createMain({ show: !startHidden });
+  // Quitting while somebody is connected is confirmed.
+  const requestQuit = async () => {
+    if (sessions.hasActiveSessions()) {
+      const res = await dialog.showMessageBox({
+        type: 'warning', buttons: [t('tray.quitConfirm'), t('common.cancel')], defaultId: 1, cancelId: 1, message: t('tray.quitWarning'),
+      });
+      if (res.response !== 0) return;
+    }
+    quitting = true;
+    app.quit();
+  };
+  const showPage = (page) => {
+    windows.showMain();
+    windows.sendToMain('app:navigate', page);
+  };
   tray = createTray({
     appPath,
     t,
     id: network.myId,
     onOpen: () => windows.showMain(),
     onCheckUpdates: () => {
-      windows.showMain();
-      windows.sendToMain('app:navigate', 'about');
+      showPage('about');
       updater.check({ manual: true });
     },
-    onQuit: async () => {
-      if (sessions.hasActiveSessions()) {
-        const res = await dialog.showMessageBox({
-          type: 'warning', buttons: [t('tray.quitConfirm'), t('common.cancel')], defaultId: 1, cancelId: 1, message: t('tray.quitWarning'),
-        });
-        if (res.response !== 0) return;
-      }
-      quitting = true;
-      app.quit();
-    },
+    onQuit: requestQuit,
   });
+  const refreshMenu = () => {
+    if (process.platform === 'darwin') setMacMenu(t, { onAbout: () => showPage('about'), onSettings: () => showPage('settings'), onQuit: requestQuit });
+  };
+  refreshMenu();
   applyLaunchAtStartup(settings.get('launchAtStartup'));
   updater.schedule(settings.get('autoCheckUpdates') && !E2E);
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient('pairdesk');
@@ -535,10 +582,8 @@ async function main() {
     windows.showMain();
     openDeepLink(extractDeepLink(argv));
   });
-  app.on('open-url', (event, url) => {
-    event.preventDefault();
-    openDeepLink(extractDeepLink([url]));
-  });
+  onOpenUrl = (url) => openDeepLink(extractDeepLink([url]));
+  openedUrls.splice(0).forEach(onOpenUrl);
   app.on('activate', () => windows.showMain());
   app.on('before-quit', () => {
     quitting = true;
@@ -550,6 +595,7 @@ async function main() {
       network.stop();
       input.stop();
       virtualCamera.stop();
+      nativeCapture.stop();
     }, 200);
   });
   app.on('window-all-closed', () => {

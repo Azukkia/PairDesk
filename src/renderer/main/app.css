@@ -47,6 +47,7 @@ body { overflow: hidden; }
 .banner.warning > .icon { color: var(--warning); }
 .banner .text { flex: 1; min-width: 0; }
 .banner .text b { display: block; }
+.banner .perm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; }
 .banner .progress { margin-top: 6px; background: rgba(255, 255, 255, 0.25); }
 .banner .progress > div { background: #fff; }
 

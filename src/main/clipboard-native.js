@@ -1,8 +1,10 @@
-// Native clipboard helpers that Electron does not offer on Windows: the
-// clipboard sequence number and copied files (CF_HDROP). On Linux copied
-// files are plain clipboard types (see clipboard.js).
+// Native clipboard helpers that Electron does not offer: the clipboard
+// sequence number and copied files — CF_HDROP on Windows, file URLs of the
+// general pasteboard on macOS. On Linux copied files are plain clipboard
+// types (see clipboard.js).
 
 import koffi from 'koffi';
+import { loadObjc } from './objc.js';
 
 let win32 = null;
 function win32Api() {
@@ -30,6 +32,55 @@ function win32Api() {
   return win32;
 }
 
+/**
+ * macOS: the general pasteboard (AppKit's NSPasteboard). Copied files are
+ * pasteboard items of type public.file-url, one per file, as Finder writes
+ * them; `changeCount` changes with every copy.
+ */
+export function macPasteboard(objc) {
+  const board = () => objc.send('void *', objc.cls('NSPasteboard'), 'generalPasteboard');
+  return {
+    changeCount: () => Number(objc.send('int64_t', board(), 'changeCount')),
+    read() {
+      return objc.withPool(() => {
+        const items = objc.send('void *', board(), 'pasteboardItems');
+        const count = items ? Math.min(Number(objc.send('uint64_t', items, 'count')), 1000) : 0;
+        const type = objc.string('public.file-url');
+        const files = [];
+        for (let i = 0; i < count; i++) {
+          const item = objc.send('void *', items, 'objectAtIndex:', ['uint64_t'], i);
+          const href = objc.text(objc.send('void *', item, 'stringForType:', ['void *'], type));
+          if (!href) continue;
+          // Finder may write file reference URLs (file:///.file/id=…): NSURL resolves them.
+          const url = objc.send('void *', objc.cls('NSURL'), 'URLWithString:', ['void *'], objc.string(href));
+          const fileUrl = url && objc.send('void *', url, 'filePathURL');
+          const file = fileUrl && objc.text(objc.send('void *', fileUrl, 'path'));
+          if (file) files.push(file);
+        }
+        return files;
+      });
+    },
+    write(paths) {
+      return objc.withPool(() => {
+        const urls = objc.send('void *', objc.cls('NSMutableArray'), 'array');
+        for (const file of paths) {
+          const url = objc.send('void *', objc.cls('NSURL'), 'fileURLWithPath:', ['void *'], objc.string(file));
+          objc.send('void', urls, 'addObject:', ['void *'], url);
+        }
+        const pb = board();
+        objc.send('int64_t', pb, 'clearContents');
+        return Boolean(objc.send('uint8_t', pb, 'writeObjects:', ['void *'], urls));
+      });
+    },
+  };
+}
+
+let mac = null;
+function macApi() {
+  mac ??= macPasteboard(loadObjc());
+  return mac;
+}
+
 const CF_HDROP = 15;
 const GMEM_MOVEABLE = 0x0002;
 const DROPEFFECT_COPY = 1;
@@ -47,13 +98,17 @@ export function dropFilesBuffer(paths) {
 }
 
 /**
- * Windows: returns a function reading the clipboard sequence number (it
- * changes whenever the clipboard content changes), so polling can skip the
- * actual read. Elsewhere returns null.
+ * Windows and macOS: returns a function reading the clipboard sequence number
+ * (it changes whenever the clipboard content changes), so polling can skip
+ * the actual read. Elsewhere returns null.
  */
 export function clipboardSequence(log) {
-  if (process.platform !== 'win32') return null;
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return null;
   try {
+    if (process.platform === 'darwin') {
+      const api = macApi();
+      return () => api.changeCount();
+    }
     const api = win32Api();
     return () => api.GetClipboardSequenceNumber();
   } catch (err) {
@@ -62,8 +117,16 @@ export function clipboardSequence(log) {
   }
 }
 
-/** Windows: copied files of the system clipboard (null elsewhere). */
+/** Windows and macOS: copied files of the system clipboard (null elsewhere). */
 export function createClipboardFiles({ log }) {
+  if (process.platform === 'darwin') {
+    try {
+      return macApi();
+    } catch (err) {
+      log?.warn(`[clipboard] files unavailable: ${err.message}`);
+      return { read: () => null, write: () => false };
+    }
+  }
   if (process.platform === 'win32') {
     let api;
     try {

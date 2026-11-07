@@ -38,8 +38,8 @@
     <string name="home_password_saved_hint">Laissez vide pour utiliser le mot de passe mémorisé</string>
     <string name="home_remember">Mémoriser le mot de passe</string>
     <string name="home_control">Contrôler</string>
-    <string name="home_camera">Caméra</string>
-    <string name="home_camera_desc">Utiliser le téléphone comme webcam pour cet ordinateur</string>
+    <string name="home_camera">Utiliser comme webcam du PC</string>
+    <string name="home_camera_desc">L\'ordinateur affiche la caméra de ce téléphone et, sous Windows, la propose à vos applications comme webcam « PairDesk Camera » (Teams, Zoom, OBS…).</string>
     <string name="home_recents">Connexions récentes</string>
     <string name="home_no_recents">Aucune connexion récente pour le moment.</string>
     <string name="home_recent_saved">Mot de passe mémorisé</string>
@@ -118,8 +118,6 @@
     <string name="session_end_confirm_body">La connexion avec %1$s sera fermée.</string>
     <string name="session_end">Terminer la session</string>
     <string name="session_back_home">Retour à l\'accueil</string>
-    <string name="session_placeholder_camera">L\'aperçu de la caméra s\'affichera ici.</string>
-    <string name="session_placeholder_host">Le partage de l\'écran de ce téléphone démarrera ici.</string>
 
 
     <!-- Visionneuse (contrôle d'un ordinateur) ; mêmes textes que la visionneuse du bureau -->
@@ -227,7 +225,7 @@
 
     <!-- Notification de session en cours -->
     <string name="notify_channel_sessions">Sessions à distance</string>
-    <string name="notify_channel_sessions_desc">Affichée pendant que ce téléphone contrôle un ordinateur</string>
+    <string name="notify_channel_sessions_desc">Affichée pendant une session à distance</string>
     <string name="notify_session_title">Session PairDesk en cours</string>
     <string name="notify_session_one">Contrôle de %1$s</string>
     <string name="notify_session_many">Contrôle de %1$s</string>
@@ -240,9 +238,50 @@
     <string name="incoming_expires">La demande expire dans %1$d s.</string>
     <string name="incoming_accept">Accepter</string>
     <string name="incoming_decline">Refuser</string>
-    <string name="incoming_active">%1$s est connecté à ce téléphone.</string>
     <string name="incoming_unknown_name">Appareil inconnu</string>
-    <string name="incoming_title_active">Session entrante</string>
+
+    <!-- Caméra (webcam du PC), partage d'écran (ordinateur → téléphone), notifications -->
+    <string name="session_connecting">Connexion à l\'ordinateur…</string>
+    <string name="camera_starting">Démarrage de la caméra…</string>
+    <string name="camera_live">En direct</string>
+    <string name="camera_front">Caméra avant</string>
+    <string name="camera_back">Caméra arrière</string>
+    <string name="camera_switch">Changer de caméra</string>
+    <string name="camera_background_hint">La caméra reste envoyée si vous quittez PairDesk.</string>
+    <string name="camera_permission_title">Accès à la caméra nécessaire</string>
+    <string name="camera_permission_body">PairDesk a besoin de la caméra pour envoyer son image à %1$s.</string>
+    <string name="camera_permission_denied">L\'accès à la caméra a été refusé. Autorisez-le dans les paramètres de l\'application (Autorisations → Appareil photo).</string>
+    <string name="camera_permission_grant">Autoriser la caméra</string>
+    <string name="open_app_settings">Ouvrir les paramètres de l\'application</string>
+    <string name="camera_error_no_camera">Ce téléphone n\'a pas de caméra utilisable.</string>
+    <string name="camera_error">La caméra s\'est arrêtée (une autre application l\'utilise peut-être).</string>
+    <string name="host_title">Partage d\'écran</string>
+    <string name="host_live">Connecté</string>
+    <string name="host_viewing">%1$s voit l\'écran de ce téléphone.</string>
+    <string name="host_controlling">%1$s voit et contrôle ce téléphone.</string>
+    <string name="host_view_only">Visualisation seule</string>
+    <string name="host_control_needs_service">Pour que %1$s puisse contrôler ce téléphone, activez « Contrôle à distance PairDesk » dans les paramètres d\'accessibilité (rubrique Applications installées ou téléchargées). Si Android indique que ce paramètre est restreint, ouvrez d\'abord les infos de l\'application, touchez ⋮ puis « Autoriser les paramètres restreints ».</string>
+    <string name="host_control_disabled">Le contrôle de ce téléphone est désactivé dans les paramètres : %1$s peut seulement regarder.</string>
+    <string name="host_app_info">Infos de l\'application</string>
+    <string name="host_keep_on">L\'écran reste allumé pendant la session. Vous pouvez y mettre fin à tout moment depuis la notification.</string>
+    <string name="host_capture_failed">Le partage d\'écran n\'a pas pu démarrer.</string>
+    <string name="host_failed">La connexion avec l\'ordinateur n\'a pas pu être établie ou a été perdue.</string>
+    <string name="host_chat_hint">Les messages de %1$s s\'affichent ici.</string>
+    <string name="incoming_consent_hint">Android vous demandera ensuite d\'autoriser le partage de l\'écran.</string>
+    <string name="incoming_waiting_consent">En attente de l\'autorisation de partage d\'écran…</string>
+    <string name="notify_channel_requests">Demandes de connexion</string>
+    <string name="notify_channel_requests_desc">Un ordinateur demande à voir ce téléphone</string>
+    <string name="notify_channel_chat">Messages du chat</string>
+    <string name="notify_channel_chat_desc">Messages de l\'ordinateur connecté à ce téléphone</string>
+    <string name="notify_camera_title">Caméra utilisée par PairDesk</string>
+    <string name="notify_camera_text">Envoyée à %1$s</string>
+    <string name="notify_host_title">Écran partagé avec PairDesk</string>
+    <string name="notify_host_viewed">%1$s voit l\'écran de ce téléphone</string>
+    <string name="notify_host_controlled">%1$s voit et contrôle ce téléphone</string>
+    <string name="accessibility_label">Contrôle à distance PairDesk</string>
+    <string name="accessibility_description">Permet à un ordinateur que vous avez accepté dans PairDesk de toucher, faire glisser et saisir du texte sur ce téléphone pendant une session à distance. Le service n\'agit que pendant que vous partagez l\'écran de ce téléphone avec cet ordinateur, ne lit que le champ de texte en cours de saisie et ne collecte rien.</string>
+    <string name="settings_accessibility_on">Le service d\'accessibilité PairDesk est activé.</string>
+    <string name="settings_accessibility_off">Le service d\'accessibilité PairDesk est désactivé : les partenaires peuvent seulement regarder ce téléphone.</string>
 
     <!-- Counted texts -->
     <plurals name="status_via_relays">

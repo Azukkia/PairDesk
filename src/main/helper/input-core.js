@@ -11,8 +11,10 @@
 // path waits for the main process.
 
 import { PointerSequencer } from '../input/pointer-seq.js';
+import { swapCtrlCmd } from '../../shared/shortcuts.js';
 
 const clamp01 = (v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
+const MAX_HELD = 500; // input messages kept during a drop replay
 const clampWheel = (v) => (Number.isFinite(v) ? Math.max(-2400, Math.min(2400, v)) : 0);
 
 /**
@@ -30,7 +32,7 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
   let guardTimer = null;
   let blocked = null;
   let dragging = null; // drop replay in progress: remote input waits
-
+  let held = []; // remote input received meanwhile, injected after it
 
   const toRenderer = (msg) => {
     try {
@@ -48,12 +50,25 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
     });
     trackerPromise.then((t) => {
       tracker = t;
-      if (t && session?.control) t.start((msg) => toRenderer(msg));
+      if (t && session) t.start((msg) => toRenderer(msg), onCursorPosition);
     });
   }
 
   function stopTracker() {
     tracker?.stop();
+  }
+
+  // Where the cursor is on the shared display (normalized like input events):
+  // the viewer shows it when somebody moves the mouse here, since the picture
+  // itself has no cursor (src/main/capture/native-capture.js).
+  const round4 = (v) => Math.round(v * 10000) / 10000;
+  function onCursorPosition({ x, y }) {
+    const rect = session?.rect;
+    if (!rect) return;
+    const nx = (x - rect.x) / Math.max(1, rect.width - 1);
+    const ny = (y - rect.y) / Math.max(1, rect.height - 1);
+    const inside = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1;
+    toRenderer({ type: 'cursor-pos', x: round4(clamp01(nx)), y: round4(clamp01(ny)), inside });
   }
 
   function setBlocked(value) {
@@ -83,13 +98,16 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
     setBlocked(null);
   }
 
+  /** Events not injected: numbered clicks must still count, else later moves would wait for them. */
+  function skip(events) {
+    for (const ev of events.slice(0, 200)) if (Array.isArray(ev)) session?.seq.accept(ev);
+  }
+
   function inject(events) {
     if (!session || !Array.isArray(events)) return;
     const list = events.slice(0, 200);
     if (!session.control) {
-      // Not injected, but numbered clicks must still count, else moves would
-      // wait for them once control is allowed again.
-      for (const ev of list) if (Array.isArray(ev)) session.seq.accept(ev);
+      skip(list);
       return;
     }
     const rect = session.rect;
@@ -110,7 +128,7 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
           injector.wheel(clampWheel(ev[1]), clampWheel(ev[2]));
           break;
         case 'k':
-          if (typeof ev[1] === 'string' && ev[1].length < 32) injector.key(ev[1], Boolean(ev[2]));
+          if (typeof ev[1] === 'string' && ev[1].length < 32) injector.key(session.swapKeys ? swapCtrlCmd(ev[1]) : ev[1], Boolean(ev[2]));
           break;
         case 't':
           if (typeof ev[1] === 'string' && ev[1]) injector.typeText?.(ev[1].slice(0, 256));
@@ -124,7 +142,15 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
     }
   }
 
+  /** Remote input during a drop replay: injected once it is over (beyond a limit, the oldest is skipped). */
+  function hold(events) {
+    if (!Array.isArray(events)) return;
+    if (held.length >= MAX_HELD) skip(held.shift());
+    held.push(events);
+  }
+
   function endSession() {
+    held = [];
     if (!session) return;
     try {
       injector.releaseAll();
@@ -188,11 +214,17 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
       return { ok };
     } finally {
       dragging = null;
+      // What the controller did meanwhile, in order.
+      for (const events of held.splice(0)) inject(events);
     }
   }
 
   function onRendererMessage(msg) {
-    if (dragging) return; // the drop replay owns the mouse for a moment
+    if (dragging) {
+      // The drop replay owns the mouse for a moment.
+      hold(msg);
+      return;
+    }
     if (Array.isArray(msg)) inject(msg);
     else if (msg?.type === 'cursor-resync') tracker?.resync();
     else if (msg?.type === 'wake' && session) wake();
@@ -207,19 +239,20 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
             endSession();
             return;
           }
-          if (session?.id !== msg.id) {
+          const fresh = session?.id !== msg.id;
+          if (fresh) {
             endSession();
             session = { id: msg.id, seq: new PointerSequencer() };
           }
           const wasControl = session.control;
           Object.assign(session, { control: Boolean(msg.control), rect: msg.rect || session.rect, scale: msg.scale || 1 });
+          // Cursor shape and position: also for view-only sessions.
+          if (fresh) startTracker();
           if (session.control && !wasControl) {
             wake();
-            startTracker();
             startGuard();
           } else if (!session.control && wasControl) {
             injector.releaseAll();
-            stopTracker();
             stopGuard();
           }
           return;
@@ -243,7 +276,10 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
           return;
         }
         case 'input':
-          if (session && msg.id === session.id && !dragging) inject(msg.events);
+          if (session && msg.id === session.id) {
+            if (dragging) hold(msg.events);
+            else inject(msg.events);
+          }
           return;
         case 'drag':
           drag(msg).then(
@@ -256,6 +292,10 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
           return;
         case 'release':
           injector.releaseAll();
+          return;
+        case 'keys':
+          // A Mac controlled from a PC: Ctrl and Cmd change places (shortcuts.js).
+          if (session && msg.id === session.id) session.swapKeys = Boolean(msg.swap);
           return;
         case 'query': {
           let value = null;

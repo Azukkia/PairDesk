@@ -65,6 +65,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.azukkia.pairdesk.R
 import io.github.azukkia.pairdesk.data.NetworkMode
 import io.github.azukkia.pairdesk.data.SettingsStore
+import io.github.azukkia.pairdesk.host.PairDeskAccessibilityService
 import io.github.azukkia.pairdesk.ui.UiText
 import io.github.azukkia.pairdesk.ui.components.NetworkTexts
 import io.github.azukkia.pairdesk.ui.components.SectionCard
@@ -147,6 +148,12 @@ private fun IncomingSection(vm: SettingsViewModel) {
             checked = settings.allowControl,
             enabled = settings.allowIncoming,
             onChange = vm::setAllowControl,
+        )
+        val service by PairDeskAccessibilityService.instance.collectAsStateWithLifecycle()
+        Text(
+            stringResource(if (service != null) R.string.settings_accessibility_on else R.string.settings_accessibility_off),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (service != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedButton(
             onClick = {

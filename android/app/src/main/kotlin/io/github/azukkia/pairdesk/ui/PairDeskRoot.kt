@@ -23,6 +23,7 @@ import io.github.azukkia.pairdesk.ui.home.HomeViewModel
 import io.github.azukkia.pairdesk.ui.session.CameraScreen
 import io.github.azukkia.pairdesk.ui.session.HostSessionScreen
 import io.github.azukkia.pairdesk.ui.session.IncomingRequestDialog
+import io.github.azukkia.pairdesk.ui.viewer.AskNotificationPermissionOnce
 import io.github.azukkia.pairdesk.ui.viewer.ViewerScreen
 import io.github.azukkia.pairdesk.ui.settings.SettingsScreen
 import io.github.azukkia.pairdesk.ui.settings.SettingsViewModel
@@ -60,6 +61,24 @@ fun PairDeskRoot(graph: AppGraph) {
             if (screen !in backStack.screens.value) backStack.push(screen)
         }
     }
+
+    // Same for the camera sessions and the session sharing this phone's screen.
+    val cameras by graph.cameras.all.collectAsStateWithLifecycle()
+    LaunchedEffect(cameras) {
+        for (sid in cameras) {
+            val screen = Screen.Camera(sid)
+            if (screen !in backStack.screens.value) backStack.push(screen)
+        }
+    }
+    val host by graph.hosts.current.collectAsStateWithLifecycle()
+    LaunchedEffect(host?.sid) {
+        val screen = host?.let { Screen.HostSession(it.sid) } ?: return@LaunchedEffect
+        if (screen !in backStack.screens.value) backStack.push(screen)
+    }
+
+    // Connection requests to this phone are notified when PairDesk is not on screen (Android 13+ asks).
+    val appSettings by graph.settings.settings.collectAsStateWithLifecycle()
+    if (current == Screen.Home && appSettings.allowIncoming) AskNotificationPermissionOnce(graph)
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         AnimatedContent(

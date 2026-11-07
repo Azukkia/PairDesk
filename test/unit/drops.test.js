@@ -85,6 +85,7 @@ test('drop manager: stages the files, drops them once all arrived, falls back to
   assert.deepEqual(drags[0].to, { x: 250, y: 400 });
   assert.deepEqual(created[0].dragged.files, [f1, f2]);
   assert.ok(fs.existsSync(f1), 'files stay where the target can read them');
+  assert.ok(fs.existsSync(path.join(a.directory, '.pairdesk-dropped')), 'the time of the drop is kept (see cleanup)');
 
   // A drag that cannot start: the files go to Downloads.
   dragResult = { ok: false };
@@ -122,6 +123,67 @@ test('drop manager: stages the files, drops them once all arrived, falls back to
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('drop manager: files of an unfinished drop reach Downloads when the session ends', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-drop2-'));
+  const downloads = path.join(root, 'downloads');
+  const manager = new DropManager({
+    target: () => ({ sid: 's1', rect: { x: 0, y: 0, width: 100, height: 100 }, scale: 1, toDip: (p) => p }),
+    windows: {},
+    input: {},
+    fallbackDir: () => downloads,
+    log,
+    stagingRoot: path.join(root, 'staging'),
+  });
+  const a = manager.accept('s1', { id: 'aaaa', x: 0.5, y: 0.5, n: 3 });
+  manager.accept('s1', { id: 'aaaa', x: 0.5, y: 0.5, n: 3 });
+  manager.track('t1', a.id);
+  manager.track('t2', a.id);
+  const f1 = path.join(a.directory, 'un.txt');
+  fs.writeFileSync(f1, '1');
+  manager.fileDone('t1', f1);
+  // Control or file transfers turned off: the third file is never offered, then the session ends.
+  manager.endSession('other');
+  assert.ok(fs.existsSync(f1));
+  manager.endSession('s1');
+  assert.equal(fs.readFileSync(path.join(downloads, 'un.txt'), 'utf8'), '1');
+  assert.equal(manager.drops.size, 0);
+  manager.fileDone('t2', path.join(a.directory, 'deux.txt')); // too late: ignored
+  assert.equal(manager.tokens.size, 0);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('drop manager: a day later, dropped files changed since (or never dropped) go to Downloads', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-drop3-'));
+  const downloads = path.join(root, 'downloads');
+  const staging = path.join(root, 'staging');
+  const manager = new DropManager({ target: () => null, windows: {}, input: {}, fallbackDir: () => downloads, log, stagingRoot: staging });
+  const now = Date.now() / 1000;
+  const make = (name, files, droppedAt = null) => {
+    const dir = path.join(staging, name);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const [file, mtime] of Object.entries(files)) {
+      fs.writeFileSync(path.join(dir, file), file);
+      fs.utimesSync(path.join(dir, file), mtime, mtime);
+    }
+    if (droppedAt) {
+      fs.writeFileSync(path.join(dir, '.pairdesk-dropped'), '');
+      fs.utimesSync(path.join(dir, '.pairdesk-dropped'), droppedAt, droppedAt);
+    }
+    fs.utimesSync(dir, now - 2 * 86400, now - 2 * 86400);
+    return dir;
+  };
+  const old = now - 3 * 86400;
+  const dropped = make('dropped', { 'as-received.txt': old, 'edited there.txt': now - 60 }, old + 10);
+  const lost = make('lost', { 'never dropped.txt': old, 'partial.txt.pdpart': old });
+  const recent = make('recent', { 'still in use.txt': now }, now);
+  fs.utimesSync(recent, now, now);
+  manager.cleanup();
+  assert.deepEqual(fs.readdirSync(downloads).sort(), ['edited there.txt', 'never dropped.txt']);
+  assert.ok(!fs.existsSync(dropped) && !fs.existsSync(lost));
+  assert.ok(fs.existsSync(path.join(recent, 'still in use.txt')));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('input helper: drag replay presses, waits for the native drag, carries it and releases', async () => {
   const calls = [];
   const injector = {
@@ -136,17 +198,20 @@ test('input helper: drag replay presses, waits for the native drag, carries it a
   calls.length = 0;
   core.handleMain({ type: 'drag', rid: 1, from: { x: 10, y: 50 }, to: { x: 90, y: 60 } });
   await new Promise((r) => setTimeout(r, 300));
-  // Remote input is ignored while the replay owns the mouse.
-  core.handleRenderer([['m', 0, 0]]);
+  // Remote input waits while the replay owns the mouse.
+  core.handleRenderer([['m', 0, 0, 1]]);
+  core.handleMain({ type: 'input', id: 's', events: [['d', 2, 0.5, 0.5, 2], ['u', 2, 0.5, 0.5, 3]] });
   core.handleMain({ type: 'drag-started' });
   await new Promise((r) => setTimeout(r, 1000));
   assert.deepEqual(replies.at(-1), { type: 'reply', rid: 1, value: { ok: true } });
   assert.deepEqual(calls.slice(0, 3), [['release'], ['move', 10, 50], ['button', 0, true]]);
-  assert.ok(!calls.some((c) => c[0] === 'move' && c[1] === 0 && c[2] === 0), 'remote move ignored during the drag');
-  const ups = calls.filter((c) => c[0] === 'button' && !c[2]);
-  assert.equal(ups.length, 1);
-  const lastMove = calls.filter((c) => c[0] === 'move').at(-1);
-  assert.deepEqual(lastMove, ['move', 90, 60]);
+  const drop = calls.findIndex((c) => c[0] === 'button' && c[1] === 0 && !c[2]);
+  assert.deepEqual(calls[drop - 1], ['move', 90, 60], 'dropped on the target');
+  assert.deepEqual(calls.slice(drop + 1), [['move', 0, 0], ['move', 49.5, 49.5], ['button', 2, true], ['move', 49.5, 49.5], ['button', 2, false]],
+    'then the remote input, in order');
+  // The numbered click counted: the next moves are applied.
+  core.handleRenderer([['m', 0.25, 0.25, 4, 3]]);
+  assert.deepEqual(calls.at(-1), ['move', 24.75, 24.75]);
 
   // Without "drag-started" the button is released where it was pressed.
   calls.length = 0;

@@ -13,10 +13,27 @@
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- The ongoing-session notification and its Disconnect action (Android 13+). -->
+    <!--
+      The phone's camera streamed to a computer (webcam): the camera, kept
+      running in the background by CameraService (type camera, Android 14+).
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <!--
+      A computer viewing this phone: the screen capture runs in
+      ScreenShareService (type mediaProjection), the screen stays on meanwhile.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!--
+      Ongoing-session notifications and their End / Disconnect buttons,
+      connection requests and chat messages while PairDesk is not on screen
+      (Android 13+).
+    -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application
@@ -59,5 +76,40 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Remote desktop session started by the user: keeps the end-to-end encrypted peer-to-peer connection to the computer the user controls alive while the user briefly switches to another app. Ends with the session, from the notification, or when the app is removed from the recent apps." />
         </service>
+
+        <!-- The camera streamed to a computer keeps running in the background. -->
+        <service
+            android:name=".camera.CameraService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
+
+        <!-- A computer views this phone: the screen capture (started after the user's consent). -->
+        <service
+            android:name=".host.ScreenShareService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <!--
+          Applies the input of a computer the user accepted (taps, swipes,
+          text, Back / Home / Recent apps). Enabled by the user in the
+          accessibility settings; only bound by the system.
+        -->
+        <service
+            android:name=".host.PairDeskAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service" />
+        </service>
+
+        <!-- Buttons of the PairDesk notifications (decline a request, end a session). -->
+        <receiver
+            android:name=".session.SessionActionReceiver"
+            android:exported="false" />
     </application>
 </manifest>

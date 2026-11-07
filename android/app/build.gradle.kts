@@ -21,8 +21,26 @@ android {
         // Announced to peers in intro / accepted (`appVersion`): the desktop
         // gates features on it, so it follows the desktop release that this
         // app is compatible with, not the package.json of the working tree.
-        versionCode = 10200
-        versionName = "1.2.0"
+        versionCode = 10300
+        versionName = "1.3.0"
+    }
+
+    signingConfigs {
+        // The release key comes from the environment (CI: repository secrets,
+        // see .github/scripts/android-signing.sh). Without it, release builds
+        // are signed with the debug key so that local and pull request builds
+        // still produce an installable APK.
+        val keystore = providers.environmentVariable("PAIRDESK_KEYSTORE_FILE").orNull?.takeIf { it.isNotBlank() }
+        if (keystore != null) {
+            fun env(name: String): String = providers.environmentVariable(name).orNull?.takeIf { it.isNotEmpty() }
+                ?: throw GradleException("PAIRDESK_KEYSTORE_FILE is set but $name is missing")
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = env("PAIRDESK_KEYSTORE_PASSWORD")
+                keyAlias = env("PAIRDESK_KEY_ALIAS")
+                keyPassword = env("PAIRDESK_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -30,10 +48,12 @@ android {
             isMinifyEnabled = false
         }
         release {
-            // R8 is off for now (the org.webrtc JNI classes need keep rules).
+            // R8 is off: the org.webrtc JNI classes need keep rules, and a
+            // minified APK cannot be tested without a device here.
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

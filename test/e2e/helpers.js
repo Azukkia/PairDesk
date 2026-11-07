@@ -103,7 +103,8 @@ export async function poll(fn, { timeout = 15_000, interval = 200, message = 'co
 export async function dumpDiagnostics(instances) {
   for (const inst of instances) {
     for (const [i, page] of inst.app.windows().entries()) {
-      const name = `${inst.name}-${i}-${page.url().split('/').slice(-2, -1)[0] || 'window'}`;
+      // Only portable characters: artifact uploads refuse ':' and the like.
+      const name = `${inst.name}-${i}-${page.url().split('/').slice(-2, -1)[0] || 'window'}`.replace(/[^\w.-]+/g, '_');
       await page.screenshot({ path: path.join(artifacts, `failure-${name}.png`), timeout: 5000 }).catch(() => {});
     }
     try {

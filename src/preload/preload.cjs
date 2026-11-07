@@ -5,16 +5,16 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const INVOKE = new Set([
-  'app:state', 'app:regenerate-password', 'app:copy', 'app:open-external', 'app:open-logs', 'app:android',
+  'app:state', 'app:regenerate-password', 'app:copy', 'app:open-external', 'app:open-logs', 'app:android', 'app:open-privacy', 'app:relaunch',
   'settings:update', 'settings:set-permanent-password', 'recents:remove', 'recents:forget-password',
   'connect:probe', 'connect:start', 'connect:cancel', 'session:end-incoming',
   'update:check', 'update:download', 'update:install',
   'session:init', 'viewer:end', 'viewer:reconnect', 'viewer:fullscreen', 'viewer:set-clipboard', 'viewer:set-prefs',
-  'host:consent', 'host:displays', 'host:end',
+  'host:consent', 'host:displays', 'host:end', 'capture:start',
   'files:begin', 'files:end', 'files:show',
   'clipboard:current', 'clipboard:list', 'clipboard:read', 'clipboard:expect',
-  'camera:attach', 'camera:end',
-  'e2e:cursor', 'e2e:vcam',
+  'camera:attach', 'camera:end', 'camera:consent',
+  'e2e:cursor', 'e2e:vcam', 'e2e:capture',
 ]);
 
 const SEND = new Set([
@@ -52,6 +52,15 @@ ipcRenderer.on('input:port', (event) => {
 // frames never cross the context bridge.
 ipcRenderer.on('camera:port', (event, format) => {
   if (event.ports[0]) window.postMessage({ type: 'pairdesk:camera-port', format }, '*', [event.ports[0]]);
+});
+
+// Host window only: a direct line to the capture helper process, which sends
+// the pictures of the screen without the mouse cursor (native-capture.js).
+ipcRenderer.on('capture:port', (event, info) => {
+  if (event.ports[0]) window.postMessage({ type: 'pairdesk:capture-port', token: info?.token }, '*', [event.ports[0]]);
+});
+ipcRenderer.on('capture:ended', (_event, info) => {
+  window.postMessage({ type: 'pairdesk:capture-ended', token: info?.token }, '*');
 });
 
 contextBridge.exposeInMainWorld('pairdesk', {

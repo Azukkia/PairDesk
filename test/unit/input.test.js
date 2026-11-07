@@ -81,10 +81,11 @@ test('input core: renderer port, cursor messages and queries', async () => {
   const inj = fakeInjector();
   const toMain = [];
   let started = null;
+  let position = null;
   let resyncs = 0;
   const tracker = {
-    start(cb) { started = cb; },
-    stop() { started = null; },
+    start(cb, pos) { started = cb; position = pos; },
+    stop() { started = null; position = null; },
     resync() { resyncs++; },
     inspect: () => ({ shape: 'text' }),
     close() {},
@@ -108,6 +109,9 @@ test('input core: renderer port, cursor messages and queries', async () => {
   assert.ok(started, 'cursor tracker started');
   started({ type: 'cursor', shape: 'text' });
   assert.deepEqual(port2.sent.find((m) => m.type === 'cursor'), { type: 'cursor', shape: 'text' });
+  // Cursor position, normalized to the shared display.
+  position({ x: rect.x + (rect.width - 1) / 4, y: rect.y + rect.height + 50 });
+  assert.deepEqual(port2.sent.at(-1), { type: 'cursor-pos', x: 0.25, y: 1, inside: false });
   port2.deliver({ type: 'cursor-resync' });
   assert.ok(resyncs >= 1);
   // The guard reports Windows blocking input to the renderer and the main process.
@@ -121,9 +125,10 @@ test('input core: renderer port, cursor messages and queries', async () => {
     { type: 'reply', rid: 8, value: { shape: 'text' } },
   ]);
 
-  // Control withdrawn: buttons released, tracker and guard stopped.
+  // Control withdrawn: buttons released and guard stopped; the cursor is
+  // still tracked (the viewer shows where it is).
   core.handleMain({ type: 'session', id: 's1', control: false, rect });
-  assert.equal(started, null);
+  assert.ok(started);
   assert.deepEqual(port2.sent.at(-1), { type: 'input-state', blocked: null });
   // A new session replaces the port and the sequencer.
   core.handleMain({ type: 'session', id: 's2', control: true, rect });

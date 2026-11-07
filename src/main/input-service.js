@@ -7,7 +7,7 @@
 
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { utilityProcess, MessageChannelMain } from 'electron';
+import { utilityProcess, MessageChannelMain, screen } from 'electron';
 
 export class InputService extends EventEmitter {
   constructor({ appPath, log }) {
@@ -25,13 +25,18 @@ export class InputService extends EventEmitter {
     this.stopping = false;
     this.restarts = 0;
     this.readyPromise = null;
+    // macOS: if the helper dies, it restarts without cursor shape tracking
+    // (AppKit calls through koffi, cursor-darwin.js) so that remote control
+    // keeps working whatever went wrong there.
+    this.noCursorShape = false;
   }
 
   /** Starts the helper; resolves once it reported whether injection works. */
   start() {
     this.stopping = false;
     this.readyPromise = new Promise((resolve) => {
-      const child = utilityProcess.fork(this.entry, [], { serviceName: 'PairDesk Input', stdio: 'pipe' });
+      const args = this.noCursorShape ? ['--no-cursor-shape'] : [];
+      const child = utilityProcess.fork(this.entry, args, { serviceName: 'PairDesk Input', stdio: 'pipe' });
       this.child = child;
       const timer = setTimeout(() => {
         this.reason = 'timeout';
@@ -46,7 +51,7 @@ export class InputService extends EventEmitter {
           this.reason = msg.reason || null;
           this.log.info(`[input] helper ready (${this.available ? 'remote control available' : `unavailable: ${this.reason}`})`);
           // After a restart: restore the session and the host window link.
-          if (this.session) this.#post({ type: 'session', ...this.session });
+          if (this.session) this.#postSession();
           if (this.renderer && !this.renderer.webContents.isDestroyed()) this.attachRenderer(this.renderer.webContents, this.renderer.id);
           resolve();
           this.emit('ready');
@@ -63,6 +68,10 @@ export class InputService extends EventEmitter {
         this.queries.clear();
         if (this.stopping) return;
         this.log.warn(`[input] helper exited (${code}), restarting`);
+        if (process.platform === 'darwin' && !this.noCursorShape) {
+          this.noCursorShape = true;
+          this.log.warn('[input] the helper restarts without cursor shape tracking');
+        }
         const delay = Math.min(10_000, 500 * 2 ** Math.min(this.restarts++, 5));
         setTimeout(() => {
           if (!this.stopping) this.start();
@@ -98,6 +107,12 @@ export class InputService extends EventEmitter {
     }
   }
 
+  #postSession() {
+    const { swapKeys, ...session } = this.session;
+    this.#post({ type: 'session', ...session });
+    this.#post({ type: 'keys', id: session.id, swap: swapKeys });
+  }
+
   #onMessage(msg) {
     switch (msg?.type) {
       case 'log': {
@@ -126,7 +141,8 @@ export class InputService extends EventEmitter {
   /**
    * Incoming session state. `id` null ends it (the helper releases every
    * pressed key and button). `control`: input may be injected now.
-   * `rect`: physical bounds of the shared display; `scale`: its scale factor.
+   * `rect`: physical bounds of the shared display (points on macOS); `scale`:
+   * its scale factor. `swapKeys`: Ctrl and Cmd change places (shortcuts.js).
    */
   setSession(state) {
     if (!state?.id) {
@@ -135,8 +151,8 @@ export class InputService extends EventEmitter {
       this.#post({ type: 'session', id: null });
       return;
     }
-    this.session = { id: state.id, control: Boolean(state.control), rect: state.rect, scale: state.scale || 1 };
-    this.#post({ type: 'session', ...this.session });
+    this.session = { id: state.id, control: Boolean(state.control), rect: state.rect, scale: state.scale || 1, swapKeys: Boolean(state.swapKeys) };
+    this.#postSession();
   }
 
   /** Links the host window of session `id` to the helper with a new port. */
@@ -184,8 +200,13 @@ export class InputService extends EventEmitter {
     this.#post({ type: 'drag-started' });
   }
 
+  /** Where the cursor is, in physical pixels (end-to-end tests). */
   async cursorPos() {
-    return (await this.#query('cursor-pos')) || { x: 0, y: 0 };
+    const p = (await this.#query('cursor-pos')) || { x: 0, y: 0 };
+    if (process.platform !== 'darwin') return p;
+    // macOS works in points.
+    const scale = screen.getDisplayNearestPoint({ x: Math.round(p.x), y: Math.round(p.y) }).scaleFactor || 1;
+    return { x: Math.round(p.x * scale), y: Math.round(p.y * scale) };
   }
 
   cursorDebug() {

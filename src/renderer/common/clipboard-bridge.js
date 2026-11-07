@@ -10,12 +10,19 @@
 // Files are transferred on demand: the viewer pushes its copied files when
 // the user presses Ctrl+V in it (the keystroke waits for them) or brings the
 // window to the front, and fetches the partner's files when the user leaves
-// the window (to paste locally).
+// the window (to paste locally). Only the viewer announces its clipboard when
+// a connection starts; the host announces later changes.
 
-import { api } from './ui.js';
+import { api, t, toast } from './ui.js';
 import { versionAtLeast } from '../shared/protocol.js';
 
 const quiet = { update() {} };
+// Copied content that cannot be sent in full (payload.notice, see clipboard-transfer.js).
+const NOTICES = {
+  'too-many-files': 'clipboard.tooManyFiles',
+  'image-too-big': 'clipboard.imageTooBig',
+  'text-too-long': 'clipboard.textTooLong',
+};
 
 export class ClipboardBridge {
   /**
@@ -25,16 +32,35 @@ export class ClipboardBridge {
    * @param {() => boolean} o.enabled        clipboard sync allowed and on
    * @param {() => boolean} [o.files]        copied files may be exchanged (file transfers allowed)
    * @param {(name, size, dir) => object} [o.view]  transfer view for clipboard files
+   * @param {(key: string) => void} [o.notify]  shows a message (i18n key)
    */
-  constructor({ rtc, peerVersion, enabled, files = () => true, view = () => quiet }) {
-    Object.assign(this, { rtc, peerVersion, enabled, filesAllowed: files, view });
+  constructor({ rtc, peerVersion, enabled, files = () => true, view = () => quiet, notify = (key) => toast(t(key), { type: 'info', timeout: 6000 }) }) {
+    Object.assign(this, { rtc, peerVersion, enabled, filesAllowed: files, view, notify });
+    this.waiters = new Map(); // cid → resolve(delivered)
+    this.reset();
+    this.offReady = api.on('clipboard:ready', (cid) => this.rtc()?.sendControl({ type: 'clipboard-ready', cid }));
+  }
+
+  /** New connection: nothing announced either way yet. */
+  reset() {
     this.outbox = null; // our last announced clipboard {cid, files, total}
     this.inbox = null; // the partner's last clipboard with files {cid, files, total, fetched}
     this.pushes = new Map(); // cid → Promise of the partner's "ready"
     this.failed = new Set(); // cids whose files could not be sent (not retried automatically)
     this.delivered = new Set(); // cids whose files are in the partner's clipboard
-    this.waiters = new Map(); // cid → resolve
-    this.offReady = api.on('clipboard:ready', (cid) => this.rtc()?.sendControl({ type: 'clipboard-ready', cid }));
+    // Pushes still running belong to the previous connection: they fail now.
+    for (const resolve of this.waiters.values()) resolve(false);
+    this.waiters.clear();
+  }
+
+  /**
+   * Our clipboard changed but could not be announced (not connected): what
+   * we announced before is not current anymore, and the partner's copied
+   * files must not replace the new content.
+   */
+  localChanged() {
+    this.outbox = null;
+    this.inbox = null;
   }
 
   get rich() {
@@ -43,20 +69,25 @@ export class ClipboardBridge {
 
   /** Our clipboard changed (payload from the main process, see clipboard-transfer.js). */
   local(payload) {
+    if (!payload) return;
+    this.localChanged();
     const rtc = this.rtc();
-    if (!payload || !rtc || !this.enabled()) return;
+    if (!rtc || !this.enabled()) return;
+    if (payload.notice) this.notify(NOTICES[payload.notice] || payload.notice);
     if (!this.rich) {
       if (payload.text) rtc.sendControl({ type: 'clipboard', text: payload.text });
       return;
     }
     const { cid, text, html, rtf, png, total } = payload;
+    if (!cid) return; // nothing that can be sent
     const files = payload.files && this.filesAllowed() ? payload.files : null;
     if (payload.files && !files) return; // copied files, but no file transfers in this session
     this.outbox = files ? { cid, files, total } : null;
-    rtc.sendControl({
-      type: 'clipboard', cid, text, html, rtf, ...(png ? { image: { size: png.byteLength } } : {}), ...(files ? { files, total } : {}),
-    });
-    if (png) {
+    const image = png ? { image: { size: png.byteLength } } : {};
+    let sent = rtc.sendControl({ type: 'clipboard', cid, text, html, rtf, ...image, ...(files ? { files, total } : {}) });
+    // Too big for one message after all: the plain text alone.
+    if (!sent && (html || rtf)) sent = rtc.sendControl({ type: 'clipboard', cid, text, ...image });
+    if (sent && png) {
       const blob = new Blob([png], { type: 'image/png' });
       const file = { name: 'clipboard.png', size: blob.size, slice: (a, b) => blob.slice(a, b) };
       rtc.sendFile(file, quiet, { clip: { cid, kind: 'image', n: 1 } });
@@ -90,7 +121,7 @@ export class ClipboardBridge {
         }
         return true;
       case 'clipboard-ready':
-        this.waiters.get(msg.cid)?.();
+        this.waiters.get(msg.cid)?.(true);
         return true;
       default:
         return false;
@@ -116,15 +147,33 @@ export class ClipboardBridge {
   push(cid = this.outbox?.cid) {
     if (!cid) return Promise.resolve(false);
     if (this.pushes.has(cid)) return this.pushes.get(cid);
-    const p = (async () => {
-      const rtc = this.rtc();
-      const list = await api.invoke('clipboard:list', cid);
-      if (!rtc || !list) return false;
-      const files = list.filter((e) => !e.dir);
-      const folders = list.filter((e) => e.dir).map((e) => e.rel);
-      const ready = new Promise((resolve) => {
-        this.waiters.set(cid, () => resolve(true));
-      });
+    const p = this.#send(cid).catch((err) => {
+      console.warn(`[clipboard] copied files not sent: ${err.message}`);
+      return false;
+    }).then((ok) => {
+      if (ok) this.delivered.add(cid);
+      else {
+        if (this.pushes.get(cid) === p) this.pushes.delete(cid);
+        this.failed.add(cid);
+      }
+      return ok;
+    });
+    this.pushes.set(cid, p);
+    return p;
+  }
+
+  async #send(cid) {
+    const rtc = this.rtc();
+    const list = await api.invoke('clipboard:list', cid);
+    if (!rtc || !list) return false;
+    const files = list.filter((e) => !e.dir);
+    const folders = list.filter((e) => e.dir).map((e) => e.rel);
+    let readyNow;
+    const ready = new Promise((resolve) => {
+      readyNow = resolve;
+    });
+    this.waiters.set(cid, readyNow);
+    try {
       rtc.sendControl({ type: 'clipboard-files', cid, n: files.length, folders });
       // A few at a time: each transfer has its own data channel.
       const queue = files.slice();
@@ -138,22 +187,21 @@ export class ClipboardBridge {
             slice: (start, end) => ({ arrayBuffer: () => api.invoke('clipboard:read', cid, entry.id, start, end).then((u8) => u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)) }),
           };
           const view = this.view(entry.rel, entry.size, 'out');
-          if (!(await rtc.sendFile(file, view, { clip: { cid, kind: 'file', rel: entry.rel, n: files.length } }))) sent = false;
+          try {
+            if (!(await rtc.sendFile(file, view, { clip: { cid, kind: 'file', rel: entry.rel, n: files.length } }))) sent = false;
+          } catch (err) {
+            console.warn(`[clipboard] ${entry.rel} not sent: ${err.message}`);
+            view.update({ status: 'failed' });
+            sent = false;
+          }
         }
       };
       await Promise.all([worker(), worker(), worker()]);
       // All delivered: the partner writes its clipboard, then says so.
-      const ok = sent && (await Promise.race([ready, new Promise((r) => setTimeout(() => r(false), 60_000))]));
-      this.waiters.delete(cid);
-      if (ok) this.delivered.add(cid);
-      else {
-        this.pushes.delete(cid);
-        this.failed.add(cid);
-      }
-      return ok;
-    })();
-    this.pushes.set(cid, p);
-    return p;
+      return sent && (await Promise.race([ready, new Promise((r) => setTimeout(() => r(false), 60_000))]));
+    } finally {
+      if (this.waiters.get(cid) === readyNow) this.waiters.delete(cid);
+    }
   }
 
   /** Asks the partner for the files it announced (once). */
@@ -165,10 +213,12 @@ export class ClipboardBridge {
     return true;
   }
 
-  /** Session start: our current clipboard. */
+  /** Session start (viewer): our current clipboard. */
   async sendCurrent() {
     if (!this.enabled()) return;
-    this.local(await api.invoke('clipboard:current'));
+    const payload = await api.invoke('clipboard:current');
+    if (payload) this.local(payload);
+    else this.outbox = null; // nothing to announce: nothing to push either
   }
 
   dispose() {

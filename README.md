@@ -9,9 +9,10 @@
 | Système | Lien (toujours la dernière version) |
 |---|---|
 | **Windows 10/11** | **[Télécharger PairDesk-Setup.exe](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe)** |
+| **macOS 13+** (Mac Intel et Apple silicon M1/M2/M3…) | **[Télécharger PairDesk-mac.dmg](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-mac.dmg)** — voir [Installation sur Mac](#installation-macos) |
 | Linux (AppImage) | [PairDesk-x86_64.AppImage](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-x86_64.AppImage) |
 | Linux (Debian/Ubuntu) | [PairDesk-amd64.deb](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-amd64.deb) |
-| **Android 8+** (téléphone, tablette) | *Bientôt (version 1.2.1)* : [PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk), ou le code QR qui apparaîtra alors sur l'accueil de PairDesk pour PC |
+| **Android 8+** (téléphone, tablette) | **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** (à partir de la version 1.3.0), ou le code QR affiché sur l'accueil de PairDesk pour PC |
 
 Ces liens sont permanents : ils pointent toujours vers la dernière version publiée. Toutes les versions restent disponibles sur la page [Releases](https://github.com/Azukkia/PairDesk/releases).
 
@@ -19,15 +20,16 @@ Ces liens sont permanents : ils pointent toujours vers la dernière version publ
 
 | | |
 |---|---|
-| **Contrôle à distance** | Image de l'écran en temps réel, souris (clics, molette, glisser), clavier (y compris AZERTY, touches mortes, AltGr), combinaisons spéciales (Alt+Tab, Win+R, Ctrl+Maj+Échap…), choix de l'écran si plusieurs moniteurs, plein écran, ajustement ou taille réelle, 3 niveaux de qualité. Le **curseur suit votre souris sans aucun retard** (c'est votre propre curseur, qui prend la forme de celui de l'ordinateur distant : flèche, texte, main…). |
-| **Échanges** | **Copier-coller dans les deux sens** (Ctrl+C / Ctrl+V) : texte, texte mis en forme, images, fichiers et dossiers. **Glisser-déposer** un fichier dans la fenêtre de contrôle : il arrive à l'endroit où vous l'avez lâché (Bureau, dossier ouvert, application…). Transfert de fichiers par bouton (enregistrés dans `Téléchargements\PairDesk`), discussion instantanée, son de l'ordinateur distant (Windows). |
+| **Contrôle à distance** | Image de l'écran en temps réel, souris (clics, molette, glisser), clavier (y compris AZERTY, touches mortes, AltGr), combinaisons spéciales (Alt+Tab, Win+R, Ctrl+Maj+Échap…), choix de l'écran si plusieurs moniteurs, plein écran, ajustement ou taille réelle, 3 niveaux de qualité. Le **curseur suit votre souris sans aucun retard** (c'est votre propre curseur, qui prend la forme de celui de l'ordinateur distant : flèche, texte, main…), sans second curseur qui traîne dans l'image. |
+| **Échanges** | **Copier-coller dans les deux sens** (Ctrl+C / Ctrl+V, Cmd+C / Cmd+V sur Mac) : texte, texte mis en forme, images, fichiers et dossiers. **Glisser-déposer** un fichier dans la fenêtre de contrôle : il arrive à l'endroit où vous l'avez lâché (Bureau, dossier ouvert, application…). Transfert de fichiers par bouton (enregistrés dans `Téléchargements\PairDesk`), discussion instantanée, son de l'ordinateur distant (Windows). |
 | **Téléphone Android** | Contrôlez votre PC depuis le téléphone, affichez et pilotez l'écran du téléphone sur le PC, ou **utilisez la caméra du téléphone comme webcam** du PC (« PairDesk Camera » dans Teams, Zoom, Discord, OBS, navigateurs…). |
-| **Accès non surveillé** | Mot de passe personnel permanent + démarrage automatique avec Windows : connectez-vous à vos machines à tout moment. Mots de passe mémorisés par partenaire (chiffrés par Windows). |
+| **Accès non surveillé** | Mot de passe personnel permanent + démarrage automatique à l'ouverture de session : connectez-vous à vos machines à tout moment. Mots de passe mémorisés par partenaire (chiffrés par le système : DPAPI sous Windows, trousseau sous macOS). |
+| **Mac ⇄ PC** | Entre un Mac et un PC, les raccourcis gardent leur sens : depuis un PC, **Ctrl+C / Ctrl+V / Ctrl+Z…** agissent comme Cmd sur le Mac ; depuis un Mac, **Cmd+C / Cmd+V…** agissent comme Ctrl sur le PC (Ctrl et Cmd/Windows échangent leur rôle). Le menu des combinaisons propose les raccourcis du Mac (Cmd+Tab, Spotlight, Forcer à quitter…) quand l'ordinateur distant est un Mac. |
 | **Contrôle par l'utilisateur** | Panneau de session toujours visible sur l'ordinateur contrôlé (qui est connecté, durée, bouton « Terminer »), demande d'acceptation optionnelle, mode « affichage seul », réception de fichiers et presse-papiers désactivables. |
 | **Mises à jour** | PairDesk vérifie au démarrage puis toutes les 4 heures si une nouvelle version existe, et **propose** de la télécharger puis de redémarrer pour l'installer. |
 | **Sécurité** | Mot de passe vérifié par échange **PAKE (CPace)** — il ne circule jamais sur le réseau, même chiffré —, signalisation chiffrée (AES-256-GCM), flux pair-à-pair chiffré (WebRTC DTLS-SRTP), protection anti-force brute. |
 | **Réseau** | Fonctionne sans aucune configuration (relais publics redondants pour la mise en relation), puis connexion **directe** entre les deux ordinateurs. Serveur privé et relais TURN optionnels. |
-| **Langues** | Français et anglais (automatique selon Windows). Thème clair/sombre. |
+| **Langues** | Français et anglais (automatique selon le système). Thème clair/sombre. |
 
 ## Installation (Windows 10/11)
 
@@ -37,36 +39,52 @@ Ces liens sont permanents : ils pointent toujours vers la dernière version publ
 
 > Installez PairDesk sur **les deux** ordinateurs (celui qui contrôle et celui qui est contrôlé).
 
+<a id="installation-macos"></a>
+## Installation (macOS 13 Ventura ou plus récent)
+
+1. Téléchargez **[PairDesk-mac.dmg](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-mac.dmg)** (une seule version pour les Mac Intel et Apple silicon), ouvrez-le et faites glisser **PairDesk** dans le dossier **Applications**.
+2. **Premier lancement** : PairDesk n'est pas signé par un certificat Apple (payant), macOS refuse donc de l'ouvrir par un double-clic (« Apple ne peut pas vérifier… »). Dans le dossier Applications, faites un **clic droit (ou Ctrl+clic) sur PairDesk → Ouvrir**, puis confirmez **Ouvrir**. Si ce bouton n'apparaît pas (macOS 15 et plus récents) : fermez le message, ouvrez **Réglages Système → Confidentialité et sécurité**, descendez jusqu'à « PairDesk a été bloqué… » et cliquez sur **Ouvrir quand même**, puis confirmez. Ce n'est à faire qu'une fois.
+3. **Pour être contrôlé depuis un autre ordinateur**, macOS demande deux autorisations ; PairDesk affiche un bandeau avec un bouton qui ouvre directement le bon réglage :
+   - **Enregistrement de l'écran** (*Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran et de l'audio système*) : activez PairDesk. Sans elle, votre partenaire ne peut pas voir votre écran (sa connexion est refusée avec une explication). macOS demande ensuite de **quitter et rouvrir** PairDesk.
+   - **Accessibilité** (*Réglages Système → Confidentialité et sécurité → Accessibilité*) : activez PairDesk. Sans elle, votre partenaire voit votre écran mais ne peut utiliser ni la souris ni le clavier (affichage seul).
+
+   Si PairDesk n'apparaît pas dans une liste, ajoutez-le avec le bouton **+** (dossier Applications). Ces autorisations ne sont pas nécessaires pour **contrôler** un autre ordinateur depuis le Mac.
+4. Fermer la fenêtre laisse PairDesk actif dans la **barre des menus** (icône en haut de l'écran) ; **Cmd+Q** le quitte.
+
+> Comme l'application n'est pas signée par Apple, macOS peut redemander les autorisations après une mise à jour de PairDesk. Si PairDesk est déjà coché mais que le bandeau reste affiché, retirez-le de la liste (bouton **−**), puis ajoutez-le à nouveau (bouton **+**).
+
 ## Utilisation
 
 **Pour être aidé (ordinateur contrôlé)** : ouvrez PairDesk et communiquez à votre partenaire votre **ID** et votre **mot de passe** (boutons de copie à côté). Pendant la session, un petit panneau reste affiché en bas à droite de l'écran : il indique qui est connecté et permet de **terminer la session** à tout moment.
 
 **Pour aider (ordinateur qui contrôle)** : saisissez l'**ID du partenaire**, cliquez sur **Se connecter**, entrez son mot de passe. La fenêtre de contrôle s'ouvre : la barre d'outils permet de changer d'écran, la qualité, d'envoyer des combinaisons de touches, des fichiers, d'ouvrir la discussion, de passer en plein écran ou de se déconnecter.
 
-**Accès non surveillé** : sur l'ordinateur distant, *Paramètres → Sécurité → Mot de passe personnel* et *Général → Démarrer PairDesk à l'ouverture de session*. Fermer la fenêtre laisse PairDesk actif dans la zone de notification (près de l'horloge).
+**Accès non surveillé** : sur l'ordinateur distant, *Paramètres → Sécurité → Mot de passe personnel* et *Général → Démarrer PairDesk à l'ouverture de session*. Fermer la fenêtre laisse PairDesk actif dans la zone de notification (près de l'horloge), ou dans la barre des menus sur Mac.
 
 Les connexions récentes apparaissent sur l'accueil et dans **Récents** ; cocher « Mémoriser le mot de passe » permet de se reconnecter en un clic. Un lien `pairdesk://123456789` ouvre directement une connexion.
 
 ## Sur votre téléphone Android
 
-> L'application Android arrive avec la version 1.2.1. PairDesk pour PC 1.2.0 est déjà prêt à l'accueillir (sessions caméra, webcam « PairDesk Camera », téléphones contrôlés).
+> Disponible à partir de la version 1.3.0. L'application n'a pas encore été testée sur tous les modèles de téléphones : signalez-nous tout souci.
 
 1. Sur le téléphone, ouvrez **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** (ou scannez le code QR de l'accueil de PairDesk sur le PC), puis ouvrez le fichier téléchargé. Android demande d'autoriser l'installation depuis le navigateur : acceptez (l'application n'est pas sur le Play Store).
 2. L'application a, elle aussi, un **ID** et un **mot de passe**.
 
 - **Contrôler le PC depuis le téléphone** : saisissez l'ID du PC et son mot de passe. Le doigt déplace la souris (mode pavé tactile ou toucher direct), le clavier du téléphone tape sur le PC, une barre de touches donne Échap, Tab, Ctrl, Alt, Windows, les flèches et les combinaisons.
-- **Afficher le téléphone sur le PC** : sur le PC, connectez-vous à l'ID du téléphone. Le téléphone demande l'autorisation de partager son écran. Pour le **piloter** depuis le PC (souris, texte, boutons Retour / Accueil / Applications récentes de la barre d'outils), activez une fois le service d'accessibilité « PairDesk » proposé par l'application.
-- **Caméra du téléphone comme webcam** : dans l'application, touchez **Caméra**, choisissez le PC (ID + mot de passe). Sur le PC, une fenêtre montre l'image ; sous Windows, la webcam **« PairDesk Camera »** apparaît dans Teams, Zoom, Discord, OBS, Chrome/Edge… (choisissez-la dans leurs réglages vidéo). Le bouton « Changer de caméra » passe de la caméra arrière à l'avant. La webcam est installée pour votre compte Windows seulement, sans droits administrateur, et retirée à la désinstallation de PairDesk.
+- **Afficher le téléphone sur le PC** : sur le PC, connectez-vous à l'ID du téléphone. Le téléphone demande l'autorisation de partager son écran. Pour le **piloter** depuis le PC (souris, texte, boutons Retour / Accueil / Applications récentes de la barre d'outils), activez une fois le service d'accessibilité « PairDesk » proposé par l'application (sur Android 13 et plus, autorisez d'abord les « paramètres restreints » : Paramètres → Applications → PairDesk → ⋮ → Autoriser les paramètres restreints, car l'application ne vient pas du Play Store).
+- **Caméra du téléphone comme webcam** : dans l'application, touchez **Utiliser comme webcam du PC**, choisissez le PC (ID + mot de passe). Sur le PC, une fenêtre montre l'image ; sous Windows, la webcam **« PairDesk Camera »** apparaît dans Teams, Zoom, Discord, OBS, Chrome/Edge… (choisissez-la dans leurs réglages vidéo). Le bouton « Changer de caméra » passe de la caméra arrière à l'avant. La webcam est installée pour votre compte Windows seulement, sans droits administrateur, et retirée à la désinstallation de PairDesk.
 
 ## Mises à jour automatiques
 
 Une fois installé, PairDesk interroge les [Releases GitHub](https://github.com/Azukkia/PairDesk/releases) de ce dépôt. Quand une version plus récente est publiée, une bannière **« La version X est disponible — Mettre à jour »** apparaît (et une notification Windows si la fenêtre est fermée). Après le téléchargement, **« Redémarrer et installer »** applique la mise à jour en quelques secondes. Rien n'est installé sans votre accord.
 
+Sur **Mac**, une application non signée par Apple ne peut pas se remplacer elle-même : PairDesk signale la nouvelle version de la même façon, et le bouton **Télécharger** ouvre le nouveau `PairDesk-mac.dmg` dans le navigateur. Ouvrez-le et faites glisser PairDesk dans Applications pour remplacer l'ancienne version.
+
 ### Publier une nouvelle version
 
 1. Modifiez le code, puis augmentez le numéro `"version"` dans `package.json` (ex. `1.0.0` → `1.0.1`).
 2. Fusionnez dans la branche `main`.
-3. Le workflow GitHub Actions **Release** construit l'installeur Windows (et les paquets Linux), crée la release `v1.0.1` et la publie. Tous les PairDesk installés proposeront la mise à jour à leur prochaine vérification.
+3. Le workflow GitHub Actions **Release** construit l'installeur Windows, les paquets Linux et l'application Mac, crée la release `v1.0.1` et la publie. Tous les PairDesk installés proposeront la mise à jour à leur prochaine vérification.
 
 Le workflow peut aussi être lancé à la main (onglet *Actions → Release → Run workflow*). Les fichiers d'une release ne sont jamais supprimés, et le lien [`releases/latest/download/PairDesk-Setup.exe`](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe) suit automatiquement la nouvelle version. (Chaque build de la CI fournit aussi l'installeur en artefact de test, conservé 90 jours.)
 
@@ -88,7 +106,13 @@ PairDesk 1.1 réduit le délai de l'image de 1-2 s à quelques centaines de mill
 
 Mesures (ordinateur distant en 1080p, lien simulé) : avec 1,2 Mb/s en envoi, délai médian **617 → 217 ms** et 95ᵉ centile **1,6 s → 0,35 s** (1,7 → 26 images/s) ; avec 4 Mb/s, médian **417 → 184 ms**.
 
-Les niveaux de qualité : *Vitesse optimisée* (le plus fluide, 60 i/s, résolution réduite), *Équilibrée* (par défaut : net et réactif) et *Qualité optimisée* (image la plus nette, pour les connexions rapides).
+PairDesk 1.3 supprime l'impression de souris « en retard » :
+
+- **Plus de second curseur qui traîne** : l'image envoyée ne contient plus le curseur de l'ordinateur distant (capture d'écran native : *Desktop Duplication* sous Windows, *MIT-SHM* sous Linux X11). Votre propre curseur, instantané, est le seul pointeur ; le curseur distant n'est dessiné que lorsque quelqu'un bouge la souris de l'autre côté (ou en mode affichage seul).
+- **60 images/s** en mode *Équilibré*, et chaque image part dès que l'écran change (rien n'est envoyé quand il ne bouge pas).
+- Les mouvements de souris partent dès qu'ils se produisent, sans attendre le rafraîchissement suivant de l'écran (jusqu'à 16 ms gagnées).
+
+Les niveaux de qualité : *Vitesse optimisée* (le plus fluide, résolution réduite), *Équilibrée* (par défaut : net et réactif, 60 i/s) et *Qualité optimisée* (image la plus nette, pour les connexions rapides).
 
 ## Sécurité — comment ça marche
 
@@ -96,13 +120,14 @@ Les niveaux de qualité : *Vitesse optimisée* (le plus fluide, 60 i/s, résolut
 2. Après 5 échecs, l'ordinateur se verrouille temporairement (30 s, puis délai doublé à chaque nouvel échec, jusqu'à 30 min).
 3. La clé de session chiffre et authentifie toute la signalisation (AES-256-GCM) — y compris l'empreinte DTLS de WebRTC, ce qui empêche toute interception de la connexion directe.
 4. Le flux WebRTC est lui-même chiffré de bout en bout (DTLS-SRTP).
-5. Le mot de passe personnel n'est jamais stocké en clair (seule sa valeur dérivée, chiffrée par le coffre de Windows/DPAPI).
+5. Le mot de passe personnel n'est jamais stocké en clair (seule sa valeur dérivée, chiffrée par le coffre du système : DPAPI sous Windows, trousseau sous macOS).
 
 ## Limites connues
 
 - **Écran sécurisé de Windows** : comme PairDesk fonctionne comme une application normale (et non comme un service système), il ne peut pas afficher ni contrôler les invites UAC « Voulez-vous autoriser… », l'écran de verrouillage ou Ctrl+Alt+Suppr. Pour contrôler des fenêtres lancées en administrateur, lancez PairDesk en administrateur sur l'ordinateur contrôlé.
 - **Installeur non signé** : avertissement SmartScreen à la première installation (voir plus haut). Un certificat de signature (ou Azure Trusted Signing) peut être ajouté dans le workflow sans changer le code.
-- **Linux** : fonctionne sous X11 (sous Wayland, seules les applications XWayland reçoivent le contrôle). **macOS** n'est pas encore pris en charge.
+- **Linux** : fonctionne sous X11 (sous Wayland, seules les applications XWayland reçoivent le contrôle).
+- **macOS** : application non signée par Apple (voir l'[installation](#installation-macos)) et mises à jour à installer soi-même. Sur un Mac contrôlé : la fenêtre de connexion et l'écran de verrouillage ne peuvent pas être contrôlés, le son n'est pas transmis, les fichiers glissés-déposés depuis le contrôleur arrivent dans `Téléchargements/PairDesk` (et non à l'endroit visé), et la touche Verr. Maj. agit sur les lettres tapées à distance sans changer le voyant du Mac.
 - **Webcam « PairDesk Camera »** : Windows uniquement. C'est une webcam DirectShow, visible par la grande majorité des applications (Teams, Zoom, Discord, OBS, navigateurs) ; l'application *Caméra* de Windows, qui n'utilise que Media Foundation, ne la voit pas. Sélectionnez-la dans l'application une fois la caméra du téléphone connectée.
 
 ## Développement
@@ -117,6 +142,7 @@ npm run test:e2e       # test complet : deux instances se connectent et se contr
                        # (sous Linux : xvfb-run -a -s "-screen 0 1600x1000x24" npm run test:e2e)
 npm run dist:win       # installeur Windows dans dist/ (sous Linux : nécessite wine + wine32)
 npm run dist:linux     # AppImage + .deb
+npm run dist:mac       # sur un Mac : PairDesk-<version>-mac.dmg + .zip (Intel + Apple silicon)
 npm run icons          # régénère les icônes depuis assets/logo.svg
 npm run build:camera   # Windows : webcam « PairDesk Camera » (CMake + Visual Studio C++)
 ```
@@ -140,13 +166,16 @@ src/main/        processus principal Electron
   sessions.js      sessions entrantes/sortantes, injection des entrées
   signaling/       protocole de connexion (CPace, messages chiffrés), transports MQTT et WebSocket
   crypto/          CPace, canal AES-GCM, dérivation du mot de passe
-  input/           injection souris/clavier (SendInput, XTest) et forme du curseur (GetCursorInfo, XFixes)
+  input/           injection souris/clavier (SendInput, XTest, Quartz) et forme du curseur (GetCursorInfo, XFixes, NSCursor)
   cursor.js        suivi de la forme du curseur de l'hôte
   helper/          processus séparés : injection souris/clavier, alimentation de la webcam virtuelle
   camera/          webcam « PairDesk Camera » (inscription, images)
   clipboard*.js    copier-coller (texte, images, fichiers)
   drops.js         fichiers déposés à l'endroit visé sur l'écran distant
-  updater.js       mises à jour automatiques (electron-updater)
+  updater.js       mises à jour automatiques (electron-updater ; sur Mac, lien de téléchargement)
+  permissions.js   autorisations macOS (Enregistrement de l'écran, Accessibilité)
+  macos.js         menu de l'application sur Mac
+  objc.js          appels Objective-C (NSCursor, NSPasteboard) depuis JavaScript
 src/renderer/    interfaces (HTML/CSS/JS sans framework)
   main/            fenêtre principale
   viewer/          fenêtre de contrôle (côté contrôleur)

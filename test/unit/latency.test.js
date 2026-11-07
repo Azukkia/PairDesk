@@ -205,6 +205,15 @@ test('pointer sequencer: moves that overtook a click still in flight are dropped
   assert.ok(s.accept(['m', 0.9, 0.9, 9, 0]));
 });
 
+test('pointer sequencer: catches up after missing clicks (input helper restarted)', () => {
+  const s = new PointerSequencer();
+  // The viewer's last click was number 5, counted by the previous helper.
+  assert.ok(!s.accept(['m', 0.1, 0.1, 8, 5]), 'waits for click 5');
+  // Its resting position on the ordered reliable channel: click 5 is past.
+  assert.ok(s.accept(['m', 0.1, 0.1, 9]));
+  assert.ok(s.accept(['m', 0.2, 0.2, 10, 5]), 'moves flow again');
+});
+
 test('pointer sequencer: the wheel is a barrier too', () => {
   const s = new PointerSequencer();
   assert.ok(s.accept(['m', 0.2, 0.5, 1, 0]));

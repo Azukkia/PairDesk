@@ -9,6 +9,7 @@ import { PROTOCOL_VERSION, isValidId } from '../shared/protocol.js';
 import { derivePrs } from './crypto/prs.js';
 import { ClipboardSync } from './clipboard.js';
 import { SignalingError } from './signaling/signaling.js';
+import { swapsCtrlCmd } from '../shared/shortcuts.js';
 
 export function physicalRect(display) {
   if (process.platform === 'win32') return screen.dipToScreenRect(null, display.bounds);
@@ -17,13 +18,14 @@ export function physicalRect(display) {
     const b = display.bounds;
     return { x: Math.round(b.x * s), y: Math.round(b.y * s), width: Math.round(b.width * s), height: Math.round(b.height * s) };
   }
+  // macOS: global display points, the unit of Quartz events (input/darwin.js).
   return display.bounds;
 }
 
 export class SessionManager extends EventEmitter {
-  constructor({ network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera = null, log, appVersion, notify, t }) {
+  constructor({ network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera = null, nativeCapture = null, log, appVersion, notify, t }) {
     super();
-    Object.assign(this, { network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera, log, appVersion, notify, t });
+    Object.assign(this, { network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera, nativeCapture, log, appVersion, notify, t });
     this.outgoing = new Map();
     this.host = null;
     this.camera = null; // a phone streaming its camera to this computer
@@ -32,6 +34,7 @@ export class SessionManager extends EventEmitter {
     this.displayRectCache = new Map();
 
     clipboard.on('change', async (content) => {
+      clipTransfers.localChanged(); // remote content still on its way must not replace it
       const targets = this.#clipboardTargets();
       if (!targets.length) return;
       const payload = await clipTransfers.announce(content);
@@ -170,6 +173,7 @@ export class SessionManager extends EventEmitter {
     this.contexts.set(wcId, entry);
     win.on('closed', () => {
       this.contexts.delete(wcId);
+      entry.reconnecting?.abort();
       this.endSession(entry.sid, 'closed');
     });
     this.#setClipboard(entry, Boolean(caps.clipboard) && this.settings.get('viewerClipboard'));
@@ -179,10 +183,19 @@ export class SessionManager extends EventEmitter {
   /** Reconnects a viewer whose session ended, reusing the same window. */
   async reconnect(entry) {
     const peerId = entry.peerId;
+    // Closing the viewer while it reconnects cancels the attempt.
+    const abort = new AbortController();
+    entry.reconnecting?.abort();
+    entry.reconnecting = abort;
     try {
       const session = await this.signaling.connect(peerId, entry.prs, {
         intro: { name: this.displayName(), platform: process.platform, appVersion: this.appVersion },
+        signal: abort.signal,
       });
+      if (abort.signal.aborted || entry.win.isDestroyed()) {
+        this.signaling.close(session.sid, 'closed');
+        return { ok: false, error: 'cancelled' };
+      }
       this.outgoing.delete(entry.sid);
       Object.assign(entry, {
         sid: session.sid,
@@ -198,17 +211,24 @@ export class SessionManager extends EventEmitter {
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.code || 'unknown', retryIn: err.retryIn };
+    } finally {
+      if (entry.reconnecting === abort) entry.reconnecting = null;
     }
   }
 
   // ───────────────────────── incoming session ─────────────────────────
 
   #hostPerms() {
+    // macOS without the Accessibility permission: view only, and the viewer
+    // is told why (`noControl`). `permissions`: src/main/permissions.js.
+    const control = this.settings.get('allowControl') && this.input.available;
+    const allowed = this.permissions?.canControl() ?? true;
     return {
-      control: this.settings.get('allowControl') && this.input.available,
+      control: control && allowed,
       files: this.settings.get('allowFileTransfer'),
       clipboard: this.settings.get('allowClipboard'),
       audio: this.settings.get('shareAudio') && process.platform === 'win32',
+      ...(control && !allowed ? { noControl: 'permission' } : {}),
     };
   }
 
@@ -219,6 +239,14 @@ export class SessionManager extends EventEmitter {
     }
     if (this.host) {
       this.signaling.reject(session.sid, 'busy');
+      return;
+    }
+    // macOS without the Screen Recording permission: the picture would only
+    // show the desktop background. The controller gets a clear error instead.
+    if (this.permissions && !this.permissions.canCapture()) {
+      this.log.warn(`[session] ${session.peerId} refused: no Screen Recording permission`);
+      this.signaling.reject(session.sid, 'screen-permission');
+      this.notify(this.t('notify.screenPermissionTitle'), this.t('notify.screenPermissionBody', { name: session.peerName || session.peerId }));
       return;
     }
     const needConsent = this.settings.get('confirmIncoming');
@@ -285,8 +313,9 @@ export class SessionManager extends EventEmitter {
 
   /**
    * A phone streams its camera to this computer (it knows the password):
-   * accepted right away, shown in a camera window and, on Windows, exposed
-   * to the applications as the "PairDesk Camera" webcam.
+   * accepted right away (or once the local user agrees, with "confirm
+   * incoming connections"), shown in a camera window and, on Windows,
+   * exposed to the applications as the "PairDesk Camera" webcam.
    */
   #onCamera(session) {
     if (this.camera) {
@@ -301,19 +330,13 @@ export class SessionManager extends EventEmitter {
       peerPlatform: session.peerPlatform,
       peerVersion: session.peerVersion || '',
       credential: session.credential,
+      state: this.settings.get('confirmIncoming') ? 'pending' : 'active',
       queue: [],
       ready: false,
       win: null,
     };
     this.camera = cam;
     this.log.info(`[session] camera of ${cam.peerId} connected (${cam.credential} password)`);
-    this.signaling.accept(cam.sid, {
-      name: this.displayName(),
-      caps: { control: false, files: false, clipboard: false, audio: false },
-      platform: process.platform,
-      appVersion: this.appVersion,
-      kind: 'camera',
-    }).catch((err) => this.log.warn(`[session] accept failed: ${err.message}`));
     cam.win = this.windows.createCamera({ peerName: cam.peerName, peerId: cam.peerId });
     const wcId = cam.win.webContents.id;
     this.contexts.set(wcId, cam);
@@ -321,13 +344,48 @@ export class SessionManager extends EventEmitter {
       this.contexts.delete(wcId);
       if (this.camera === cam) this.endSession(cam.sid, 'camera-closed');
     });
-    this.notify(this.t('notify.cameraTitle'), this.t('notify.cameraBody', { name: cam.peerName }), () => cam.win?.show());
+    if (cam.state === 'pending') {
+      // Same consent as a control session, in the camera window.
+      this.signaling.notifyWaiting(cam.sid);
+      cam.consentTimer = setTimeout(() => this.cameraConsent(cam.sid, false, 'timeout'), 45_000);
+      this.notify(this.t('notify.requestTitle'), this.t('notify.requestBody', { name: cam.peerName, id: cam.peerId }), () => cam.win?.show());
+    } else {
+      this.#activateCamera(cam);
+    }
     this.#changed();
+  }
+
+  #activateCamera(cam) {
+    cam.state = 'active';
+    this.signaling.accept(cam.sid, {
+      name: this.displayName(),
+      caps: { control: false, files: false, clipboard: false, audio: false },
+      platform: process.platform,
+      appVersion: this.appVersion,
+      kind: 'camera',
+    }).catch((err) => this.log.warn(`[session] accept failed: ${err.message}`));
+    this.notify(this.t('notify.cameraTitle'), this.t('notify.cameraBody', { name: cam.peerName }), () => cam.win?.show());
+  }
+
+  /** The local user's answer to a phone's camera (pending camera session). */
+  cameraConsent(sid, accept, reason = 'declined') {
+    const cam = this.camera;
+    if (!cam || cam.sid !== sid || cam.state !== 'pending') return false;
+    clearTimeout(cam.consentTimer);
+    if (accept) {
+      this.#activateCamera(cam);
+      cam.win?.webContents.send('session:state', { state: 'active' });
+      this.#changed();
+      return true;
+    }
+    this.signaling.reject(sid, reason === 'timeout' ? 'timeout' : 'declined');
+    this.#teardownCamera(cam, { notifyPeer: false, reason });
+    return true;
   }
 
   /** The camera window shows the picture: registers and starts the webcam, links the window to it. */
   async attachVirtualCamera(ctx) {
-    if (ctx !== this.camera || !this.virtualCamera) return { supported: false, active: false, error: null };
+    if (ctx !== this.camera || ctx.state !== 'active' || !this.virtualCamera) return { supported: false, active: false, error: null };
     const status = await this.virtualCamera.start();
     if (status.active && ctx === this.camera && !ctx.win.isDestroyed()) this.virtualCamera.attach(ctx.win.webContents);
     return status;
@@ -336,9 +394,12 @@ export class SessionManager extends EventEmitter {
   #teardownCamera(cam, { notifyPeer = true, reason = 'user' } = {}) {
     if (this.camera !== cam) return;
     this.camera = null;
-    if (notifyPeer) this.signaling.close(cam.sid, reason);
+    clearTimeout(cam.consentTimer);
+    if (notifyPeer && cam.state === 'pending') this.signaling.reject(cam.sid, 'declined');
+    else if (notifyPeer) this.signaling.close(cam.sid, reason);
     if (cam.win && !cam.win.isDestroyed()) cam.win.destroy();
     this.log.info(`[session] camera of ${cam.peerId} disconnected (${reason})`);
+    if (cam.state === 'active' && this.settings.get('regeneratePasswordAfterSession')) this.network.regeneratePassword();
     this.#changed();
   }
 
@@ -364,15 +425,27 @@ export class SessionManager extends EventEmitter {
     return sources.map((src, index) => {
       const display = displays.find((d) => String(d.id) === String(src.display_id)) || displays[index] || displays[0];
       const rect = physicalRect(display);
+      // macOS rects are in points: the picture is captured in pixels.
+      const pixels = process.platform === 'darwin' ? display.scaleFactor || 1 : 1;
       return {
         sourceId: src.id,
         displayId: String(display.id),
         index,
-        width: rect.width,
-        height: rect.height,
+        width: Math.round(rect.width * pixels),
+        height: Math.round(rect.height * pixels),
         primary: display.id === primaryId,
       };
     });
+  }
+
+  /**
+   * The host window asks for the picture of `displayId` without the mouse
+   * cursor (native-capture.js); it falls back to Chromium's capture when this
+   * resolves { ok: false }.
+   */
+  startNativeCapture(ctx, { displayId, fps } = {}) {
+    if (ctx !== this.host || ctx.state !== 'active' || !this.nativeCapture || ctx.win.isDestroyed()) return { ok: false, reason: 'unavailable' };
+    return this.nativeCapture.start(ctx.win.webContents, { rect: this.#displayRect(String(displayId)), fps });
   }
 
   #displayRect(displayId) {
@@ -407,6 +480,7 @@ export class SessionManager extends EventEmitter {
       control: host.perms.control && this.settings.get('allowControl'),
       rect: this.#displayRect(host.displayId),
       scale: display.scaleFactor || 1,
+      swapKeys: swapsCtrlCmd(process.platform, host.peerPlatform),
     });
     if (host.ready && !host.inputLinked && host.win && !host.win.isDestroyed()) {
       host.inputLinked = true;
@@ -423,6 +497,8 @@ export class SessionManager extends EventEmitter {
     const host = this.host;
     if (!host || host.state !== 'active' || !host.perms.control || !host.perms.files) return null;
     if (!this.settings.get('allowControl') || !this.settings.get('allowFileTransfer')) return null;
+    // macOS: no drop replay yet, the files go to Downloads/PairDesk.
+    if (process.platform === 'darwin') return null;
     const display = screen.getAllDisplays().find((d) => String(d.id) === String(host.displayId)) || screen.getPrimaryDisplay();
     const scale = display.scaleFactor || 1;
     return {
@@ -462,7 +538,7 @@ export class SessionManager extends EventEmitter {
       };
     }
     if (ctx.kind === 'camera') {
-      return { ...common, role: 'camera', vcam: this.virtualCamera?.status() || { supported: false, active: false } };
+      return { ...common, role: 'camera', state: ctx.state, vcam: this.virtualCamera?.status() || { supported: false, active: false } };
     }
     return { ...common, role: 'host', state: ctx.state, perms: ctx.perms, credential: ctx.credential };
   }
@@ -477,7 +553,7 @@ export class SessionManager extends EventEmitter {
   }
 
   sendSignal(ctx, data) {
-    if (ctx.kind === 'host' && ctx.state !== 'active') return;
+    if ((ctx.kind === 'host' || ctx.kind === 'camera') && ctx.state !== 'active') return;
     this.signaling.send(ctx.sid, { type: 'signal', data }).catch((err) => {
       this.log.warn(`[session] signal to ${ctx.peerId} failed: ${err.message}`);
     });
@@ -525,6 +601,7 @@ export class SessionManager extends EventEmitter {
     this.#setClipboard(host, false);
     this.clipTransfers.endSession(host);
     this.files.abortAll(host.sid);
+    this.emit('host-ended', host.sid); // unfinished drops (drops.js)
     if (host.win && !host.win.isDestroyed()) host.win.destroy();
     if (host.state === 'active') {
       this.notify(this.t('notify.endedTitle'), this.t('notify.endedBody', { name: host.peerName }));

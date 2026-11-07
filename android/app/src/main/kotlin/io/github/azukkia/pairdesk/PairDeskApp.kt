@@ -3,7 +3,9 @@ package io.github.azukkia.pairdesk
 import android.app.Application
 import android.content.Context
 import android.os.Build
+import io.github.azukkia.pairdesk.camera.CameraSessions
 import io.github.azukkia.pairdesk.core.transport.Logger
+import io.github.azukkia.pairdesk.host.HostSessions
 import io.github.azukkia.pairdesk.data.DeviceNames
 import io.github.azukkia.pairdesk.data.KeystoreSecretBox
 import io.github.azukkia.pairdesk.data.SettingsStore
@@ -48,6 +50,12 @@ class AppGraph(context: Context) {
     /** Computers controlled from this phone (created on the main thread, on first use). */
     val viewers: ViewerSessions by lazy { ViewerSessions(this) }
 
+    /** Computers receiving this phone's camera (created on the main thread, on first use). */
+    val cameras: CameraSessions by lazy { CameraSessions(this) }
+
+    /** Computers viewing / controlling this phone (created on the main thread when the app starts). */
+    val hosts: HostSessions by lazy { HostSessions(this) }
+
     private companion object {
         const val PREFS = "pairdesk"
     }
@@ -62,6 +70,8 @@ class PairDeskApp : Application() {
         graph = AppGraph(this)
         // The network runs while the app is visible (and while a session runs).
         NetworkLifecycle(this, graph.network).install()
+        // Watches connection requests to this phone (notification when PairDesk is not on screen).
+        graph.hosts
     }
 }
 

@@ -318,31 +318,30 @@ private fun ConnectCard(vm: HomeViewModel, recents: List<RecentPartner>) {
             Checkbox(checked = vm.remember, onCheckedChange = { vm.remember = it })
             Text(stringResource(R.string.home_remember), style = MaterialTheme.typography.bodyMedium)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(
-                onClick = {
-                    focus.clearFocus()
-                    vm.connect(SessionKind.CONTROL)
-                },
-                enabled = vm.canConnect,
-                modifier = Modifier.weight(1f).height(48.dp),
-            ) {
-                Icon(painterResource(R.drawable.ic_desktop), contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.home_control))
-            }
-            FilledTonalButton(
-                onClick = {
-                    focus.clearFocus()
-                    vm.connect(SessionKind.CAMERA)
-                },
-                enabled = vm.canConnect,
-                modifier = Modifier.weight(1f).height(48.dp),
-            ) {
-                Icon(painterResource(R.drawable.ic_videocam), contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.home_camera))
-            }
+        Button(
+            onClick = {
+                focus.clearFocus()
+                vm.connect(SessionKind.CONTROL)
+            },
+            enabled = vm.canConnect,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_desktop), contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.home_control))
+        }
+        // The phone's camera as the computer's webcam (camera session).
+        FilledTonalButton(
+            onClick = {
+                focus.clearFocus()
+                vm.connect(SessionKind.CAMERA)
+            },
+            enabled = vm.canConnect,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_videocam), contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.home_camera), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(
             stringResource(R.string.home_camera_desc),

@@ -1,10 +1,42 @@
 // Writes files received from a partner into Downloads/PairDesk.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 
 const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
+/**
+ * This user's folder for files in transit (clipboard, drops), in the
+ * temporary folder. On Linux /tmp is shared by all users: the folder is
+ * private (0700) and must really be ours, not a link or a folder somebody
+ * else created first (else a new one is made for this run). Windows: the
+ * temporary folder is already the user's own.
+ */
+export function privateTempRoot({ tmp = os.tmpdir(), uid = process.getuid?.() } = {}) {
+  if (uid == null) return path.join(tmp, 'PairDesk');
+  const dir = path.join(tmp, `PairDesk-${uid}`);
+  try {
+    try {
+      fs.mkdirSync(dir, { mode: 0o700 });
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+    const st = fs.lstatSync(dir);
+    if (st.isDirectory() && st.uid === uid) {
+      if (st.mode & 0o077) fs.chmodSync(dir, 0o700);
+      return dir;
+    }
+  } catch {
+    /* below */
+  }
+  try {
+    return fs.mkdtempSync(`${dir}-`); // created 0700
+  } catch {
+    return dir; // nothing can be written there anyway
+  }
+}
 
 export function sanitizeFileName(name) {
   let clean = String(name ?? '')

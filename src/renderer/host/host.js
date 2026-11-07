@@ -8,6 +8,7 @@ import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
 import { ClipboardBridge } from '../common/clipboard-bridge.js';
 import { AdaptiveScaler, CpuWatch, rankCodecs } from '../common/adaptive.js';
 import { formatId, QUALITY_PRESETS, versionAtLeast } from '../shared/protocol.js';
+import { startNativeCapture, captureDesktopAudio } from './native-capture.js';
 
 const app = document.getElementById('app');
 let init = null;
@@ -19,7 +20,7 @@ let videoSender = null;
 let videoTransceiver = null;
 let audioTrack = null;
 let quality = 'balanced';
-let captureFps = 30;
+let captureFps = QUALITY_PRESETS.balanced.maxFramerate;
 let codecFirst = 'vp9';
 const scaler = new AdaptiveScaler();
 const cpuWatch = new CpuWatch();
@@ -146,7 +147,42 @@ function toggleChat(open = !chatOpen) {
   resize();
 }
 
+// The picture without the mouse cursor (native-capture.js) for viewers that
+// draw the host's cursor themselves (desktop 1.3+), while it works;
+// Chromium's capture, which paints the cursor in, otherwise.
+let nativeFailures = 0;
+const useNativeCapture = () => nativeFailures < 3 && init.peer.platform !== 'android' && versionAtLeast(init.peer.version, '1.3.0');
+
 async function capture(display, withAudio, fps = captureFps) {
+  if (useNativeCapture()) {
+    try {
+      const native = await startNativeCapture(api, { displayId: display.displayId, fps, onFailure: onNativeFailure });
+      // Large screens come already halved: the encoder scales down less.
+      native.track.pairdeskScale = display.width / native.width;
+      const tracks = [native.track];
+      if (withAudio) {
+        const audio = await captureDesktopAudio(display.sourceId).catch((err) => console.warn('audio capture unavailable', err.message));
+        if (audio) tracks.push(audio);
+      }
+      console.info(`[host] native capture ${native.width}x${native.height} (no cursor in the picture)`);
+      return new MediaStream(tracks);
+    } catch (err) {
+      console.info(`[host] native capture unavailable (${err.message}): Chromium capture`);
+      nativeFailures = Infinity;
+    }
+  }
+  return captureChromium(display, withAudio, fps);
+}
+
+// A capture that worked and then stopped (e.g. the screen resolution
+// changed) is started again; Chromium's capture after a few failures.
+function onNativeFailure(err) {
+  nativeFailures++;
+  console.warn(`[host] native capture stopped (${err.message}): ${useNativeCapture() ? 'restarting it' : 'Chromium capture'}`);
+  if (videoSender) recapture().catch((e) => console.warn('recapture failed', e?.message || e));
+}
+
+async function captureChromium(display, withAudio, fps) {
   const video = {
     mandatory: {
       chromeMediaSource: 'desktop',
@@ -184,7 +220,12 @@ async function applyQuality(mode) {
   if (quality !== previous) {
     scaler.reset(performance.now());
     const fps = QUALITY_PRESETS[quality].maxFramerate;
-    if (fps !== captureFps) {
+    if (fps !== captureFps && videoSender.track.pairdeskSetFps) {
+      // The native capture changes its rate on the fly.
+      captureFps = fps;
+      shownFps = fps;
+      videoSender.track.pairdeskSetFps(fps);
+    } else if (fps !== captureFps) {
       const choice = ++fpsChoice;
       captureFps = fps;
       try {
@@ -204,7 +245,7 @@ async function applyQuality(mode) {
   Object.assign(params.encodings[0], {
     maxBitrate: preset.maxBitrate,
     maxFramerate: preset.maxFramerate,
-    scaleResolutionDownBy: currentScale(),
+    scaleResolutionDownBy: Math.max(1, currentScale() / (videoSender.track.pairdeskScale || 1)),
   });
   params.degradationPreference = preset.degradation;
   try {
@@ -350,7 +391,8 @@ async function startHosting() {
     sendInfo();
     window.pairdesk.inputPort.send({ type: 'cursor-resync' });
     if (inputBlocked) rtc.sendControl({ type: 'input-blocked', reason: inputBlocked });
-    clip.sendCurrent();
+    // The clipboard is not sent now: only the viewer's goes over at the
+    // start (the host announces later changes).
   });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
@@ -399,7 +441,8 @@ function onConnectionState(state) {
     rtc.stats().then((s) => setStatus(s.relayed ? t('viewer.relayed') : t('viewer.direct')));
   } else if (state === 'disconnected') {
     setStatus(t('viewer.reconnecting'));
-    timers.restart = setTimeout(() => rtc.restartIce(), 4000);
+    // A network change: try another path soon (often a second is enough).
+    timers.restart = setTimeout(() => rtc.restartIce(), 1500);
   } else if (state === 'failed') {
     setStatus(t('viewer.reconnecting'));
     rtc.restartIce();
@@ -464,13 +507,19 @@ api.on('session:state', ({ state, perms: p }) => {
 });
 api.on('clipboard:local', (payload) => {
   if (rtc?.pc.connectionState === 'connected') clip.local(payload);
+  else clip.localChanged();
 });
 // From the input helper: shape of the local mouse cursor (drawn by the viewer
 // with zero delay), and whether Windows currently blocks injected input.
 let inputBlocked = null;
+// When the picture has no cursor (native capture), the viewer also needs its
+// position: sent as ['p', x, y, inside] on the latest-wins pointer channel.
+const pictureHasCursor = () => !videoSender?.track?.pairdeskNative;
 window.pairdesk.inputPort.on((msg) => {
   if (msg?.type === 'cursor') {
-    if (perms.control) rtc?.sendControl(msg);
+    rtc?.sendControl(msg);
+  } else if (msg?.type === 'cursor-pos') {
+    if (!pictureHasCursor() && rtc?.pc.connectionState === 'connected') rtc.sendPointer([['p', msg.x, msg.y, msg.inside ? 1 : 0]]);
   } else if (msg?.type === 'input-state') {
     inputBlocked = msg.blocked || null;
     if (perms.control) rtc?.sendControl({ type: 'input-blocked', reason: inputBlocked });

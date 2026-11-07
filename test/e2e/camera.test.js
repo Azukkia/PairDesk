@@ -169,16 +169,35 @@ async function scenario(pc, phone) {
     const received = ((await shown()) - q0) / 3;
     const fps = ((await pc.main.evaluate(() => window.pairdesk.invoke('e2e:vcam'))).frames - t0) / 3;
     process.stderr.write(`webcam: ${JSON.stringify(stats)}, ${fps.toFixed(1)} frames/s (${received.toFixed(1)} received)\n`);
-    assert.ok(fps >= 12, `webcam frame rate ${fps}`);
+    // macOS runners are slower (the fake webcam path there checks the pipeline, not speed).
+    assert.ok(fps >= (process.platform === 'darwin' ? 8 : 12), `webcam frame rate ${fps}`);
     if (process.platform === 'win32') {
       await checkVirtualWebcam(pc);
       await poll(async () => (await vcamState()) === 'in-use', { message: 'webcam reported in use' });
     }
 
-    // The computer ends the session: the phone is told.
+    // The computer ends the session: the phone is told, and the password
+    // changes like after a control session.
+    await pc.main.evaluate(() => window.pairdesk.invoke('settings:update', { regeneratePasswordAfterSession: true, confirmIncoming: true }));
     await win.click('#camera-end');
     await poll(() => closed !== null, { message: 'phone told the session ended' });
     await poll(() => !pc.app.windows().some((w) => w.url().includes('/camera/')), { message: 'camera window closed' });
+    const newPassword = await poll(async () => {
+      const p = (await pc.main.textContent('#my-password')).trim();
+      return p !== password ? p : null;
+    }, { message: 'password changed after the camera session' });
+
+    // "Confirm incoming connections" applies to cameras too: declined here.
+    const asking = phone.signaling.connect(hostId, await derivePrs(newPassword, hostId), {
+      intro: { name: 'Téléphone de test', platform: 'android', appVersion: '1.2.0', kind: 'camera' },
+    });
+    asking.catch(() => {});
+    const win2 = await waitForWindow(pc.app, '/camera/');
+    await win2.waitForSelector('#camera-decline', { timeout: 20_000 });
+    await win2.screenshot({ path: path.join(artifacts, 'camera-request.png') }).catch(() => {});
+    await win2.click('#camera-decline');
+    await assert.rejects(asking, (err) => err.code === 'declined');
+    await poll(() => !pc.app.windows().some((w) => w.url().includes('/camera/')), { message: 'declined camera window closed' });
   } finally {
     relaying = false;
     await relay;

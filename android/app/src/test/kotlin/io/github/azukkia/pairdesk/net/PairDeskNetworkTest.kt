@@ -161,6 +161,33 @@ class PairDeskNetworkTest {
     }
 
     @Test
+    fun `a request accepted on the phone waits for the screen capture consent`() = runBlocking {
+        online()
+        val desk = desktop()
+        val result = async { runCatching { desk.connect(network.myId, phonePrs(), intro()) } }
+        waitUntil { network.incoming.value?.state == IncomingState.PENDING }
+        val sid = network.incoming.value!!.sid
+        assertFalse(network.holdIncoming("another-session-id", 3_000))
+        assertTrue(network.holdIncoming(sid, 3_000))
+        assertTrue(network.incoming.value!!.deadline!! > System.currentTimeMillis() + 2_000)
+        // Past the normal consent delay (1.5 s here), still waiting.
+        kotlinx.coroutines.delay(2_000)
+        assertEquals(IncomingState.PENDING, network.incoming.value?.state)
+        assertTrue(network.acceptIncoming(sid, network.hostCaps(controlAvailable = false)))
+        assertEquals(Caps(), Caps.from(withTimeout(5_000) { result.await() }.getOrThrow().info!!["caps"]))
+        assertFalse(network.holdIncoming(sid, 3_000), "only while pending")
+
+        // The system dialog stays open too long: declined with timeout.
+        network.endIncoming(sid)
+        val second = async { runCatching { desk.connect(network.myId, phonePrs(), intro()) } }
+        waitUntil { network.incoming.value?.state == IncomingState.PENDING }
+        assertTrue(network.holdIncoming(network.incoming.value!!.sid, 300))
+        val error = withTimeout(5_000) { second.await() }.exceptionOrNull() as SignalingException
+        assertEquals("timeout", error.code)
+        assertNull(network.incoming.value)
+    }
+
+    @Test
     fun `a second partner is told the phone is busy`() = runBlocking {
         online()
         val desk = desktop()

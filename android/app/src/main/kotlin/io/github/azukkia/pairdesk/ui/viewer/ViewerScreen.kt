@@ -595,7 +595,7 @@ private fun ViewerWindowEffects(landscape: Boolean) {
 
 /** Android 13+: the ongoing-session notification (with its Disconnect button) needs a permission, asked once. */
 @Composable
-private fun AskNotificationPermissionOnce(graph: AppGraph) {
+internal fun AskNotificationPermissionOnce(graph: AppGraph) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }

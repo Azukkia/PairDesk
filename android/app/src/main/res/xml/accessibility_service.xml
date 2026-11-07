@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PairDesk's accessibility service (host.PairDeskAccessibilityService): it only
+  injects the input of a computer the user accepted. It needs gestures, the
+  focused text field (canRetrieveWindowContent) and, on Android 13+, an input
+  connection to type like a keyboard (flagInputMethodEditor). No events are
+  received.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagInputMethodEditor"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_description"
+    android:notificationTimeout="100" />

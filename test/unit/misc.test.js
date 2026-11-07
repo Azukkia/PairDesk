@@ -6,7 +6,7 @@ import path from 'node:path';
 import { KEYMAP, KEY_COMBOS } from '../../src/shared/keymap.js';
 import { generateDeviceId, generatePassword, formatId, normalizeId, isValidId, PASSWORD_ALPHABET } from '../../src/shared/protocol.js';
 import { createTranslator, resolveLanguage, STRINGS } from '../../src/shared/i18n.js';
-import { sanitizeFileName, FileReceiver } from '../../src/main/files.js';
+import { sanitizeFileName, FileReceiver, privateTempRoot } from '../../src/main/files.js';
 import { Settings } from '../../src/main/settings.js';
 import { ClipboardSync } from '../../src/main/clipboard.js';
 import { fakeClipboard, FakeClipboardItem } from './fake-clipboard.js';
@@ -52,6 +52,31 @@ test('received file names are sanitised', () => {
   assert.equal(sanitizeFileName('..'), 'fichier');
   assert.equal(sanitizeFileName('report. '), 'report');
   assert.ok(sanitizeFileName('x'.repeat(400) + '.pdf').endsWith('.pdf'));
+});
+
+// Windows: the temporary folder is per user already.
+test('files in transit: a private folder of this user (shared /tmp)', { skip: process.platform === 'win32' }, () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-tmp-'));
+  const uid = process.getuid();
+  const dir = privateTempRoot({ tmp });
+  assert.equal(dir, path.join(tmp, `PairDesk-${uid}`));
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  // Left open by an older version: closed again.
+  fs.chmodSync(dir, 0o777);
+  assert.equal(privateTempRoot({ tmp }), dir);
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  // A link planted under our name, or a folder that is not ours: not used.
+  const elsewhere = fs.mkdtempSync(path.join(tmp, 'elsewhere-'));
+  fs.rmSync(dir, { recursive: true });
+  fs.symlinkSync(elsewhere, dir);
+  const other = privateTempRoot({ tmp });
+  assert.notEqual(other, dir);
+  assert.ok(other.startsWith(`${dir}-`));
+  assert.ok(fs.lstatSync(other).isDirectory());
+  assert.equal(fs.statSync(other).mode & 0o777, 0o700);
+  const notOurs = privateTempRoot({ tmp, uid: uid + 1 }); // created, but owned by another uid than the expected one
+  assert.notEqual(notOurs, path.join(tmp, `PairDesk-${uid + 1}`));
+  fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 test('FileReceiver writes, renames on completion and refuses overflow', async () => {

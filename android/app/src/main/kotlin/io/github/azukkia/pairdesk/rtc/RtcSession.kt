@@ -118,7 +118,8 @@ class RtcException(message: String?) : Exception(message)
  *   transfer in this app yet), everything else is published on [events].
  *
  * Usage: create, subscribe ([events], [inputHandler]), add local tracks
- * ([addTrack]), then [start] (the desktop's `ready()`); [close] when done.
+ * ([addTrack] for a host, [sendVideoInAnswer] for a phone camera), then
+ * [start] (the desktop's `ready()`); [close] when done.
  * The session closes itself when the signaling session ends.
  *
  * Threading: public methods may be called from any thread. Callbacks of
@@ -216,6 +217,10 @@ class RtcSession(
     @Volatile
     private var remoteVideo: VideoTrack? = null
     private val videoSinks = CopyOnWriteArraySet<VideoSink>()
+
+    /** Controller of a camera session: the track answered on the offered video m-line. */
+    @Volatile
+    private var answerVideo: VideoTrack? = null
     private val tracker = RtcStatsTracker()
 
     /** The underlying peer connection, for what this class does not wrap (codec preferences, encodings…). */
@@ -341,9 +346,59 @@ class RtcSession(
 
     // ─────────────────────────── media ───────────────────────────
 
-    /** Adds a local track (screen or camera) before [start]; the caller keeps owning it. */
+    /**
+     * Host: adds a local track (the screen) before [start]; the caller keeps
+     * owning it. The returned sender is only valid until the senders are
+     * listed again: use [setVideoEncoding] to change its parameters.
+     */
     fun addTrack(track: MediaStreamTrack, streamIds: List<String> = listOf(DEFAULT_STREAM)): RtpSender? =
         guarded(null) { peerConnection.addTrack(track, streamIds) }
+
+    /**
+     * Controller of a camera session: the host's offer has a `recvonly` video
+     * m-line; the answer sends [track] on it (`sendonly`), like the phone of
+     * test/e2e/camera.test.js. Call before [start]; the caller keeps owning
+     * the track.
+     */
+    fun sendVideoInAnswer(track: VideoTrack) {
+        answerVideo = track
+    }
+
+    /** Puts [answerVideo] on the video transceiver of the remote offer just applied. */
+    private fun attachAnswerVideo() {
+        val track = answerVideo ?: return
+        guarded(Unit) {
+            val transceiver = peerConnection.transceivers.firstOrNull {
+                it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO && !it.isStopped
+            } ?: return@guarded
+            // Renegotiations (ICE restarts) keep the transceiver: attached once.
+            if (transceiver.sender.track() != null) return@guarded
+            transceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_ONLY
+            if (!transceiver.sender.setTrack(track, false)) log.warn("[rtc] cannot send the video track")
+            transceiver.sender.setStreams(listOf(DEFAULT_STREAM))
+            log.info("[rtc] answering with the local video track")
+        }
+    }
+
+    /**
+     * Encoding of the video sender(s): bitrate and frame rate caps, resolution
+     * scale (null leaves a value unchanged). False when it could not be applied.
+     */
+    fun setVideoEncoding(maxBitrate: Int?, maxFramerate: Int?, scaleDown: Double?): Boolean = guarded(false) {
+        var applied = false
+        for (sender in peerConnection.senders) {
+            if (sender.track()?.kind() != MediaStreamTrack.VIDEO_TRACK_KIND) continue
+            val params = sender.parameters
+            if (params.encodings.isEmpty()) continue
+            for (e in params.encodings) {
+                if (maxBitrate != null) e.maxBitrateBps = maxBitrate
+                if (maxFramerate != null) e.maxFramerate = maxFramerate
+                if (scaleDown != null) e.scaleResolutionDownBy = scaleDown
+            }
+            applied = sender.setParameters(params) || applied
+        }
+        applied
+    }
 
     /** Shows the remote video in [sink] (follows a replaced track; detached on close). */
     fun addVideoSink(sink: VideoSink) {
@@ -553,6 +608,7 @@ class RtcSession(
         val pc = peerConnection
         pc.awaitSet(local = false, SessionDescription(type, d.sdp))
         if (type == SessionDescription.Type.OFFER) {
+            attachAnswerVideo()
             val answer = pc.awaitCreate(offer = false, MediaConstraints())
             setLocalAndSend(answer)
         }

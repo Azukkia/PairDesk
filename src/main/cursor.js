@@ -7,6 +7,8 @@
 //       unnamed cursor bitmap (Linux: Chromium/Electron apps, animated
 //       cursors). `png` (data URL) is sent once per id and per viewer; later
 //       messages only carry the id.
+// and, to `onPosition`, where the cursor is: { x, y } in physical pixels of
+// the virtual screen (only when it moved).
 
 import crypto from 'node:crypto';
 import { MAX_CURSOR_IMAGES } from '../shared/cursor-shapes.js';
@@ -20,6 +22,7 @@ async function createProbe(log) {
     if (process.platform === 'linux' && process.env.XDG_SESSION_TYPE !== 'wayland') {
       return (await import('./input/cursor-x11.js')).createX11CursorProbe();
     }
+    if (process.platform === 'darwin') return (await import('./input/cursor-darwin.js')).createDarwinCursorProbe();
   } catch (err) {
     log?.warn?.(`[cursor] shape tracking unavailable: ${err.message}`);
   }
@@ -56,7 +59,7 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
       .update(cur.bgra)
       .digest('base64url')
       .slice(0, 16);
-    const msg = { type: 'cursor', shape: 'custom', id, hot: [cur.xhot, cur.yhot], scale: scale() };
+    const msg = { type: 'cursor', shape: 'custom', id, hot: [cur.xhot, cur.yhot], scale: cur.scale ?? scale() };
     // Same cache rule as the viewer (remote-cursor.js).
     if (sentImages.delete(id)) {
       sentImages.add(id);
@@ -69,19 +72,33 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
   }
 
   let lastRaw = null;
+  let onPosition = null;
+  let lastPos = null;
 
   function poll() {
     let cur;
     try {
-      cur = probe.read({ image: 'unknown' });
+      // Without the bitmap first: it is only needed when the shape changed.
+      cur = probe.read({ image: 'never' });
     } catch {
       return;
     }
     if (!cur) return; // secure desktop / UAC: keep the previous shape
+    if (onPosition && Number.isFinite(cur.x) && Number.isFinite(cur.y) && (cur.x !== lastPos?.x || cur.y !== lastPos?.y)) {
+      lastPos = { x: cur.x, y: cur.y };
+      onPosition(lastPos);
+    }
     // Fast path: same serial (X11) / handle (Windows) as last poll = no change.
     const raw = `${cur.serial ?? cur.handle}|${cur.shape}|${cur.hidden ?? ''}`;
     if (raw === lastRaw) return;
     lastRaw = raw;
+    if (!cur.shape && !cur.bgra) {
+      try {
+        cur = probe.read({ image: 'unknown' }) || cur;
+      } catch {
+        /* keep the shape-less reading */
+      }
+    }
     const { key, msg } = message(cur);
     if (key === lastKey) return;
     lastKey = key;
@@ -89,9 +106,13 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
   }
 
   return {
-    /** Starts polling; `onMessage` receives each {type:'cursor'} change. */
-    start(onMessage) {
+    /**
+     * Starts polling; `onMessage` receives each {type:'cursor'} change and
+     * `position` (optional) each new position.
+     */
+    start(onMessage, position = null) {
       send = onMessage;
+      onPosition = position;
       this.resync();
       clearInterval(timer);
       timer = setInterval(poll, intervalMs);
@@ -102,6 +123,7 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
     resync() {
       lastKey = null;
       lastRaw = null;
+      lastPos = null;
       sentImages = new Set();
     },
     /** Diagnostics (tests): what the probe reports right now. */
@@ -118,6 +140,7 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
       clearInterval(timer);
       timer = null;
       send = null;
+      onPosition = null;
     },
     close() {
       this.stop();

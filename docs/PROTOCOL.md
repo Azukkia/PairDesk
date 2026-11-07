@@ -123,10 +123,15 @@ Receivers reject a counter already seen. `confirm.intro` is the same
   `{type:'intro', name, platform, appVersion, kind?}`; `platform` is
   `win32 | linux | darwin | android`; `kind` is `'control'` (default) or
   `'camera'` (1.2+, see 6).
-* `{type:'waiting'}`, `{type:'rejected', reason}`.
+* `{type:'waiting'}`, `{type:'rejected', reason}`; besides `busy`,
+  `declined`, `timeout`, 1.3+ macOS hosts answer `screen-permission` when
+  macOS does not let PairDesk record the screen (the picture would only show
+  the desktop background).
 * `{type:'accepted', name, caps, platform, appVersion, kind?}` (host → ctrl);
   `caps = {control, files, clipboard, audio}` (booleans), 1.2+ hosts echo
-  `kind`.
+  `kind`. 1.3+: `caps.noControl = 'permission'` when the host allows control
+  but its system does not (macOS without the Accessibility permission):
+  `control` is then false.
 * `{type:'signal', data}` where `data` is `{description: RTCSessionDescriptionInit}`
   or `{candidate: RTCIceCandidateInit}` (WebRTC, both ways).
 * `{type:'bye', reason}` ends the session.
@@ -161,10 +166,18 @@ current display, `0 ≤ x, y ≤ 1` (rounded to 4 decimals).
 | `['m', x, y, seq?, btnSeq?]` | move (pointer channel; reliable copy after 120 ms of rest) |
 | `['d', button, x, y, seq?]` / `['u', button, x?, y?, seq?]` | button down / up (0 left, 1 middle, 2 right, 3 back, 4 forward) |
 | `['w', dx, dy, seq?]` | wheel, pixels (positive dy = down), preceded by `['m', x, y, seq]` |
-| `['k', code, down]` | key, `code` = `KeyboardEvent.code` (`KeyA`, `Enter`, `ShiftLeft`, `MetaLeft`…), `down` 1/0 |
+| `['k', code, down]` | key, `code` = `KeyboardEvent.code` (`KeyA`, `Enter`, `ShiftLeft`, `MetaLeft`…), `down` 1/0 (see 4.1.1) |
 | `['r']` | release every pressed key and button |
 | `['t', text]` (1.2+) | type Unicode text (≤ 256 chars), for mobile keyboards |
 | `['a', action]` (1.2+, Android hosts) | `back`, `home`, `recents`, `notifications` |
+
+Host → controller on the `pointer` channel (1.3+): `['p', x, y, inside]`,
+where the host's cursor is (normalized like above; `inside` 1/0 whether it is
+on the shared display), about 30 times a second when it moves. Sent only when
+the picture has no cursor painted in (1.3 hosts capture the screen without
+it, so that the controller does not see a second cursor trailing behind its
+own): the controller draws the cursor at that point when its own mouse is
+still, or always when it cannot control. Older controllers ignore it.
 
 Sequence numbers (1.1+): `seq` increases for every position-bearing event of a
 viewer window; `btnSeq` is the `seq` of the last `d`/`u`/`w` sent before the
@@ -172,6 +185,21 @@ move. The host drops a move whose `seq` is not above the last applied one, or
 whose `btnSeq` is above the last applied button/wheel event (it overtook a
 click still being retransmitted). Events without numbers are applied as they
 come.
+
+#### 4.1.1 Keys between a Mac and a PC (1.3+)
+
+Keys are physical positions; the host's keyboard layout picks the character.
+The shortcut key is Command on a Mac and Ctrl elsewhere, so when exactly one
+side is a Mac (`platform` of intro/accepted), `ControlLeft/Right` and
+`MetaLeft/Right` change places, and the **Mac side** does it: a Mac viewer
+swaps the keys it types (not the combinations of its menu, which are already
+in the host's terms), a Mac host swaps the keys it receives. A viewer that
+sends Mac shortcuts to a Mac host from a PC therefore sends them swapped.
+Other peers send and apply keys unchanged.
+
+A Mac viewer also sends keys whose release macOS does not report as a whole
+press (`down` then `up` at once): keys pressed while Command is held, and
+Caps Lock.
 
 ### 4.2 Control messages
 
@@ -202,9 +230,13 @@ Both ways:
   `{type:'clipboard', text}`. 1.2+ peers send
   `{type:'clipboard', cid, text?, html?, rtf?, image?:{size}, files?:[{name, size, dir}], total?}`
   whenever their clipboard changes (`cid`: random id of that content, ≤ 32
-  chars; `text`/`html`/`rtf` ≤ 200 KiB each and 240 KiB together; `files`
-  lists the copied top-level files and folders, `size` null for a folder,
-  `total` bytes in all). A 1.2 receiver writes text/HTML/RTF to its clipboard
+  chars; `text`/`html`/`rtf` ≤ 200 KiB each and 240 KiB together, measured
+  JSON-escaped as they are sent; `files` lists the copied top-level files
+  and folders, `size` null for a folder, `total` bytes in all). When the
+  control channel opens, the controller also sends its current clipboard;
+  1.3+ hosts do not (the controller's clipboard must not be replaced by the
+  host's, maybe much older, content). A 1.3+ sender whose message is still
+  too big sends `text` alone. A 1.2+ receiver writes text/HTML/RTF to its clipboard
   right away. An image follows at once as a file transfer whose offer carries
   `clip:{cid, kind:'image', n:1}`. Copied files are only announced; their
   content travels on demand:
@@ -223,7 +255,11 @@ Both ways:
 * Files: `{type:'file-offer', fid, name, size, drop?, clip?}` → `{type:'file-accept'|'file-reject', fid}`;
   the sender then opens data channel `file:<fid>` and sends the content in
   chunks (≤ 16 KiB), the receiver answers `{type:'file-done', fid, ok}` once
-  `size` bytes arrived; either side may send `{type:'file-cancel', fid}`.
+  `size` bytes arrived (anything beyond is ignored); either side may send
+  `{type:'file-cancel', fid}`, e.g. a sender that cannot open the channel.
+  1.3+ peers close `file:<fid>` once the file is over (the receiver when
+  `size` bytes arrived or on cancel, the sender after `file-done` or a
+  failure): a connection only has a few hundred data channels.
   `drop` (1.2+, controller → host): `{id, x, y, n}` when the files were dropped
   at a point of the remote screen (`x`, `y` normalized like input events, `n`
   files share the same `id`): once the `n` files arrived, a 1.2 host replays a
@@ -258,7 +294,10 @@ A phone streams its camera to a computer, which exposes it as a webcam.
 
 * The phone connects like a controller with `intro.kind = 'camera'`.
 * A 1.2+ host answers `accepted` with `kind:'camera'`; anything else (older
-  host) must be treated as "camera not supported, update PairDesk".
+  host) must be treated as "camera not supported, update PairDesk". When the
+  computer asks its user first ("confirm incoming connections", 1.3+), it
+  sends `waiting` before, and `rejected` (`declined`, `timeout`) if refused,
+  as for a control session.
 * The host (computer) is still the offerer: its offer contains a `recvonly`
   video m-line (no screen capture) and the `control` channel. The phone answers
   with its camera track (`sendonly`), 1280×720 at 30 fps when possible.

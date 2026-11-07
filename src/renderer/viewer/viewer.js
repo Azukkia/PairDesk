@@ -4,9 +4,10 @@
 import { api, h, clear, icon, t, setLanguage, toast, showMenu, formatBytes } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
 import { ClipboardBridge } from '../common/clipboard-bridge.js';
-import { createRemoteCursor } from './remote-cursor.js';
+import { createRemoteCursor, createRemotePointer } from './remote-cursor.js';
 import { KEYMAP, KEY_COMBOS } from '../shared/keymap.js';
 import { formatId } from '../shared/protocol.js';
+import { MAC_KEY_COMBOS, heldNonModifiers, macTapKey, swapCtrlCmd, swapsCtrlCmd } from '../shared/shortcuts.js';
 
 const app = document.getElementById('app');
 let init = null;
@@ -33,6 +34,7 @@ const pressedButtons = new Set();
 let transfers = null;
 let chat = null;
 let remoteCursor = null;
+let remotePointer = null;
 // Copied files are fetched automatically below these sizes, on request above.
 const AUTO_PUSH_BYTES = 50 * 1024 * 1024;
 const AUTO_FETCH_BYTES = 200 * 1024 * 1024;
@@ -98,6 +100,7 @@ function buildUI() {
   // Why the remote mouse does nothing (Windows blocks injected input).
   ui.notice = h('div', { class: 'notice', id: 'input-blocked', hidden: true, role: 'status' });
   ui.stage.append(ui.overlay, ui.notice);
+  remotePointer = createRemotePointer(ui.stage, toStage);
 
   chat = new ChatView({ onSend: (text) => rtc?.sendControl({ type: 'chat', text }) });
   ui.chat = h('aside', { class: 'chat-panel', hidden: true },
@@ -120,6 +123,7 @@ function refreshToolbar() {
   ui.id.textContent = `ID ${formatId(init.peer.id)}`;
   const live = !st.ended;
   ui.viewOnly.hidden = Boolean(caps.control) || !live;
+  ui.viewOnly.title = caps.noControl === 'permission' ? t('viewer.viewOnlyMac') : t('viewer.viewOnlyHelp');
   ui.scaleBtn.hidden = !live;
   ui.qualityBtn.hidden = !live;
   ui.keysBtn.hidden = !caps.control || !live || androidHost();
@@ -146,6 +150,7 @@ function refreshToolbar() {
   ui.chatBtn.classList.toggle('active', st.chatOpen);
   ui.stage.classList.toggle('control', canControl());
   remoteCursor.setActive(canControl());
+  remotePointer.setControlling(canControl());
   clear(ui.endBtn, icon(st.ended ? 'x' : 'power', 'sm'), st.ended ? t('common.close') : t('viewer.disconnect'));
   ui.dot.className = `dot ${st.ended ? 'offline' : st.connected ? 'online' : 'connecting'}`;
 }
@@ -192,6 +197,8 @@ function startSession() {
   lastButtonSeq = 0;
   lastMove = null;
   remoteCursor.reset();
+  remotePointer.reset();
+  clip.reset(); // what either side announced belongs to the previous connection
   rtc = new RtcSession({ role: 'viewer', iceServers: init.iceServers });
   rtc.acceptFile = async ({ name, size, clip: clipInfo }) => {
     const res = await api.invoke('files:begin', { name, size, clip: clipInfo });
@@ -222,6 +229,11 @@ function startSession() {
     if (!st.ended) onConnectionState('disconnected');
   });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
+  // From 1.3 hosts whose picture has no cursor: where it is ('p' events).
+  rtc.addEventListener('input', ({ detail: events }) => {
+    if (!Array.isArray(events)) return;
+    for (const ev of events) if (Array.isArray(ev) && ev[0] === 'p') remotePointer.update(ev[1], ev[2], ev[3]);
+  });
   setOverlay('negotiating');
   clearTimeout(timers.connect);
   timers.connect = setTimeout(() => {
@@ -235,6 +247,7 @@ function onConnectionState(state) {
   if (st.ended) return;
   clearTimeout(timers.lost);
   if (state === 'connected') {
+    if (!st.connected && init.caps?.noControl === 'permission') toast(t('viewer.viewOnlyMac'), { type: 'info' });
     st.connected = true;
     clearTimeout(timers.connect);
     clearTimeout(timers.fail);
@@ -265,6 +278,7 @@ function showEnded(reason) {
   if (st.ended) return;
   st.ended = reason;
   st.connected = false;
+  heldPaste = null;
   releaseAll();
   clearTimeout(timers.connect);
   clearTimeout(timers.fail);
@@ -329,6 +343,7 @@ function onControl(msg) {
       break;
     case 'cursor':
       remoteCursor.handle(msg);
+      remotePointer.shape(msg);
       break;
     case 'input-blocked':
       ui.notice.hidden = !msg.reason;
@@ -434,10 +449,15 @@ function qualityMenu(anchor) {
 }
 
 function keysMenu(anchor) {
-  const combos = ['ctrlAltDel', 'ctrlShiftEsc', 'altTab', 'altF4', 'win', 'winR', 'winD', 'winE', 'winL', 'printScreen'];
+  // A Mac gets its own shortcuts. It swaps Ctrl and Cmd for a PC viewer
+  // (shortcuts.js): they are sent swapped, to arrive as they are.
+  const mac = init.peer.platform === 'darwin';
+  const table = mac ? MAC_KEY_COMBOS : KEY_COMBOS;
+  const combos = mac ? Object.keys(MAC_KEY_COMBOS) : ['ctrlAltDel', 'ctrlShiftEsc', 'altTab', 'altF4', 'win', 'winR', 'winD', 'winE', 'winL', 'printScreen'];
+  const hostSwaps = swapsCtrlCmd(init.peer.platform, window.pairdesk.platform);
   showMenu(anchor, [{ title: t('viewer.actions') }, ...combos.map((name) => ({
     label: t(`keys.${name}`),
-    onClick: () => sendCombo(KEY_COMBOS[name]),
+    onClick: () => sendCombo(hostSwaps ? table[name].map(swapCtrlCmd) : table[name]),
   }))]);
 }
 
@@ -547,24 +567,32 @@ function sendMove(x, y) {
 
 const round4 = (v) => Math.round(v * 10000) / 10000;
 
-/** Maps a mouse position to normalized remote coordinates (null if outside). */
-function mapPoint(e, clamp = false) {
+/** Where the remote screen is drawn, in client coordinates (null without a picture). */
+function pictureRect() {
   const v = ui.video;
   if (!v.videoWidth) return null;
   const r = v.getBoundingClientRect();
-  let dw = r.width;
-  let dh = r.height;
-  let ox = r.left;
-  let oy = r.top;
-  if (st.scale === 'fit') {
-    const s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
-    dw = v.videoWidth * s;
-    dh = v.videoHeight * s;
-    ox = r.left + (r.width - dw) / 2;
-    oy = r.top + (r.height - dh) / 2;
-  }
-  let x = (e.clientX - ox) / dw;
-  let y = (e.clientY - oy) / dh;
+  if (st.scale !== 'fit') return { left: r.left, top: r.top, width: r.width, height: r.height };
+  const s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+  const width = v.videoWidth * s;
+  const height = v.videoHeight * s;
+  return { left: r.left + (r.width - width) / 2, top: r.top + (r.height - height) / 2, width, height };
+}
+
+/** Normalized remote point → stage coordinates (for elements drawn over the picture). */
+function toStage(x, y) {
+  const pic = pictureRect();
+  if (!pic) return null;
+  const s = ui.stage.getBoundingClientRect();
+  return { x: pic.left - s.left + ui.stage.scrollLeft + x * pic.width, y: pic.top - s.top + ui.stage.scrollTop + y * pic.height };
+}
+
+/** Maps a mouse position to normalized remote coordinates (null if outside). */
+function mapPoint(e, clamp = false) {
+  const pic = pictureRect();
+  if (!pic) return null;
+  let x = (e.clientX - pic.left) / pic.width;
+  let y = (e.clientY - pic.top) / pic.height;
   if (x < 0 || x > 1 || y < 0 || y > 1) {
     if (!clamp) return null;
     x = Math.min(1, Math.max(0, x));
@@ -575,19 +603,26 @@ function mapPoint(e, clamp = false) {
 
 // Ctrl+V (or Shift+Insert) held while copied files travel to the remote clipboard.
 let heldPaste = null;
-function holdPaste(e) {
+function holdPaste(e, released = false) {
   const mods = [];
-  if (e.ctrlKey) mods.push('ControlLeft');
-  if (e.metaKey) mods.push('MetaLeft');
+  if (e.ctrlKey) mods.push(remoteKey('ControlLeft'));
+  if (e.metaKey) mods.push(remoteKey('MetaLeft'));
   if (e.shiftKey) mods.push('ShiftLeft');
-  heldPaste = { code: e.code, released: false };
+  const held = { code: e.code, released };
+  heldPaste = held;
   const out = clip.undelivered;
+  // Never held for ever: given up (no paste) when the files take far longer
+  // than they should (1 minute + 1 s per MB).
+  const timer = setTimeout(() => {
+    if (heldPaste === held) heldPaste = null;
+  }, 60_000 + (out.total || 0) / 1000);
   toast(t('viewer.clipSending', { size: formatBytes(out.total || 0) }), { type: 'info' });
   clip.push(out.cid).then((ok) => {
-    const held = heldPaste;
+    clearTimeout(timer);
+    if (heldPaste !== held) return; // given up, or the session ended
     heldPaste = null;
     if (!ok) toast(t('viewer.clipFailed'), { type: 'error' });
-    if (!ok || !held || !canControl()) return;
+    if (!ok || !canControl()) return;
     // The modifiers may have been released meanwhile: send the whole shortcut.
     const missing = mods.filter((m) => ![...pressedKeys].some((k) => k.startsWith(m.replace('Left', ''))));
     const events = [...missing.map((m) => ['k', m, 1]), ['k', held.code, 1]];
@@ -602,6 +637,10 @@ function releaseAll() {
   pressedKeys.clear();
   pressedButtons.clear();
 }
+
+// A Mac controlling a PC: Ctrl and Cmd change places (shortcuts.js).
+const macViewer = window.pairdesk.platform === 'darwin';
+const remoteKey = (code) => (swapsCtrlCmd(window.pairdesk.platform, init?.peer?.platform) ? swapCtrlCmd(code) : code);
 
 function isTypingTarget(target) {
   return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
@@ -633,13 +672,25 @@ function attachInput() {
     }
     sendReliable([p ? ['u', e.button, p[0], p[1], pointerSeq] : ['u', e.button]]);
   });
-  window.addEventListener('mousemove', (e) => {
+  const onMove = (e) => {
     if (!canControl()) return;
     if (!pressedButtons.size && !ui.stage.contains(e.target)) return;
     if (e.target.closest?.('.overlay')) return;
     const p = mapPoint(e, pressedButtons.size > 0);
-    if (p) sendMove(p[0], p[1]);
-  });
+    if (p) {
+      remotePointer.localMove();
+      sendMove(p[0], p[1]);
+    }
+  };
+  // 'pointerrawupdate' arrives as soon as the mouse moved; 'mousemove' waits
+  // for the next display frame (up to 16 ms later). Both are listened to: a
+  // position already sent is not sent again.
+  if ('onpointerrawupdate' in window) {
+    window.addEventListener('pointerrawupdate', (e) => {
+      if (e.pointerType === 'mouse') onMove(e);
+    });
+  }
+  window.addEventListener('mousemove', onMove);
   ui.stage.addEventListener('wheel', (e) => {
     if (!canControl()) return;
     e.preventDefault();
@@ -676,20 +727,35 @@ function attachInput() {
     if (!KEYMAP[e.code]) return;
     e.preventDefault();
     e.stopPropagation();
-    if (down) pressedKeys.add(e.code);
-    else if (!pressedKeys.delete(e.code)) return;
+    const code = remoteKey(e.code);
+    // Keys whose release a Mac does not report are sent as a whole press.
+    const tap = macViewer && macTapKey(e.code, down, e.metaKey);
+    const events = [];
+    if (tap) {
+      events.push(['k', code, 1], ['k', code, 0]);
+    } else {
+      if (down) pressedKeys.add(code);
+      else if (!pressedKeys.delete(code)) return;
+      events.push(['k', code, down ? 1 : 0]);
+      if (macViewer && !down && (e.code === 'MetaLeft' || e.code === 'MetaRight')) {
+        for (const held of heldNonModifiers(pressedKeys)) {
+          pressedKeys.delete(held);
+          events.unshift(['k', held, 0]);
+        }
+      }
+    }
     // Pasting files copied here: the keystroke waits until they are in the
     // remote clipboard.
     const paste = (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) || (e.code === 'Insert' && e.shiftKey);
     if (down && paste && !heldPaste && clip.undelivered) {
-      holdPaste(e);
+      holdPaste(e, tap);
       return;
     }
     if (heldPaste?.code === e.code) {
       if (!down) heldPaste.released = true;
       return;
     }
-    sendReliable([['k', e.code, down ? 1 : 0]]);
+    sendReliable(events);
   };
   window.addEventListener('keydown', onKey(true), true);
   window.addEventListener('keyup', onKey(false), true);
@@ -709,7 +775,10 @@ function attachInput() {
 
   ui.video.addEventListener('resize', () => {
     applyVideoSize();
+    remotePointer.refresh();
   });
+  window.addEventListener('resize', () => remotePointer.refresh());
+  ui.stage.addEventListener('scroll', () => remotePointer.refresh(), { passive: true });
   ui.video.addEventListener('loadeddata', () => {
     if (!st.hadVideo) {
       st.hadVideo = true;
@@ -775,6 +844,7 @@ function attachToolbarAutoHide() {
 api.on('session:ended', ({ reason }) => showEnded(reason));
 api.on('clipboard:local', (payload) => {
   if (st.connected) clip.local(payload);
+  else clip.localChanged();
 });
 api.on('clipboard:ready', () => toast(t('viewer.clipFilesReady'), { type: 'success' }));
 
