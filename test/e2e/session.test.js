@@ -321,7 +321,11 @@ async function scenario(host, ctrl) {
   } else {
     await step5c().catch(async (err) => {
       const c = await host.main.evaluate(() => window.pairdesk.invoke('e2e:cursor')).catch(() => null);
-      process.stderr.write(`step 5c on macOS: ${err.message}; host cursor ${JSON.stringify(c)}\n`);
+      const panel = await host.app.evaluate(({ BrowserWindow, screen }) => {
+        const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/host/'));
+        return { bounds: win.getBounds(), visible: win.isVisible(), display: screen.getPrimaryDisplay().bounds };
+      }).catch(() => null);
+      process.stderr.write(`step 5c on macOS: ${err.message}; host cursor ${JSON.stringify({ x: c?.x, y: c?.y })}, panel ${JSON.stringify(panel)}, scale ${screenInfo.scale}\n`);
       await viewer.mouse.up().catch(() => {});
       await setVisible(host.app, '/main/', true);
       await placeWindow(host.app, '/main/', placed.outer, true);
@@ -418,6 +422,7 @@ async function scenario(host, ctrl) {
       execFileSync('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Path '${copied.replace(/'/g, "''")}'`]);
     } else if (process.platform === 'darwin') {
       execFileSync('osascript', ['-l', 'JavaScript', '-e', MAC_WRITE_FILE, copied]);
+      process.stderr.write(`macOS pasteboard after the copy: ${JSON.stringify(await readFiles())}\n`);
     } else {
       await ctrl.app.evaluate(({ clipboard, ClipboardItem }, uri) => clipboard.write([
         new ClipboardItem({ 'electron application/osclipboard;format="text/uri-list"': uri }),
@@ -437,8 +442,8 @@ async function scenario(host, ctrl) {
     }, { timeout: 20_000, message: 'copied file in the host clipboard' }).catch(async (err) => {
       // macOS (new): reported with the pasteboard state instead of failing, for now.
       if (process.platform !== 'darwin') throw err;
-      const formats = await host.app.evaluate(({ clipboard }) => clipboard.availableFormats()).catch((e) => e.message);
-      process.stderr.write(`step 5f on macOS: ${err.message}; pasteboard formats ${JSON.stringify(formats)}, files ${JSON.stringify(await readFiles())}\n`);
+      const seen = await viewer.evaluate(() => window.pairdesk.invoke('clipboard:current')).catch((e) => e.message);
+      process.stderr.write(`step 5f on macOS: ${err.message}; pasteboard files ${JSON.stringify(await readFiles())}, viewer's clipboard ${JSON.stringify(seen)}\n`);
       return null;
     });
     if (received) assert.equal(fs.readFileSync(received, 'utf8'), 'contenu copié');

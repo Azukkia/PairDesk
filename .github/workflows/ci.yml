@@ -166,7 +166,10 @@ jobs:
           PAIRDESK_PACKAGED_EXE="$RUNNER_TEMP/Applications/PairDesk.app/Contents/MacOS/PairDesk" node --test test/e2e/smoke.test.js
         env:
           PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-packaged
+      # Informative: Electron under Rosetta can hang on the runner's GPU-less VM.
       - name: Smoke test of the Intel half (Rosetta)
+        continue-on-error: true
+        timeout-minutes: 5
         run: |
           if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
             echo "::notice::Rosetta is not available on this runner: Intel half not tested"
