@@ -7,7 +7,7 @@
 
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { utilityProcess, MessageChannelMain } from 'electron';
+import { utilityProcess, MessageChannelMain, screen } from 'electron';
 
 export class InputService extends EventEmitter {
   constructor({ appPath, log }) {
@@ -184,8 +184,13 @@ export class InputService extends EventEmitter {
     this.#post({ type: 'drag-started' });
   }
 
+  /** Where the cursor is, in physical pixels (end-to-end tests). */
   async cursorPos() {
-    return (await this.#query('cursor-pos')) || { x: 0, y: 0 };
+    const p = (await this.#query('cursor-pos')) || { x: 0, y: 0 };
+    if (process.platform !== 'darwin') return p;
+    // macOS works in points.
+    const scale = screen.getDisplayNearestPoint({ x: Math.round(p.x), y: Math.round(p.y) }).scaleFactor || 1;
+    return { x: Math.round(p.x * scale), y: Math.round(p.y * scale) };
   }
 
   cursorDebug() {

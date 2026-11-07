@@ -23,6 +23,7 @@ export async function createInjector(log) {
   try {
     if (process.platform === 'win32') return (await import('./win32.js')).createWin32Injector(log);
     if (process.platform === 'linux') return (await import('./x11.js')).createX11Injector(log);
+    if (process.platform === 'darwin') return (await import('./darwin.js')).createDarwinInjector(log);
     return unavailable('unsupported-platform');
   } catch (err) {
     log?.error(`[input] remote control unavailable: ${err.message}`);

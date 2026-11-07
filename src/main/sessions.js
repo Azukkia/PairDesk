@@ -17,6 +17,7 @@ export function physicalRect(display) {
     const b = display.bounds;
     return { x: Math.round(b.x * s), y: Math.round(b.y * s), width: Math.round(b.width * s), height: Math.round(b.height * s) };
   }
+  // macOS: global display points, the unit of Quartz events (input/darwin.js).
   return display.bounds;
 }
 
@@ -376,12 +377,14 @@ export class SessionManager extends EventEmitter {
     return sources.map((src, index) => {
       const display = displays.find((d) => String(d.id) === String(src.display_id)) || displays[index] || displays[0];
       const rect = physicalRect(display);
+      // macOS rects are in points: the picture is captured in pixels.
+      const pixels = process.platform === 'darwin' ? display.scaleFactor || 1 : 1;
       return {
         sourceId: src.id,
         displayId: String(display.id),
         index,
-        width: rect.width,
-        height: rect.height,
+        width: Math.round(rect.width * pixels),
+        height: Math.round(rect.height * pixels),
         primary: display.id === primaryId,
       };
     });
