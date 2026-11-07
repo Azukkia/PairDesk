@@ -4,7 +4,7 @@
 import { api, h, clear, icon, t, setLanguage, toast, showMenu, formatBytes } from '../common/ui.js';
 import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
 import { ClipboardBridge } from '../common/clipboard-bridge.js';
-import { createRemoteCursor } from './remote-cursor.js';
+import { createRemoteCursor, createRemotePointer } from './remote-cursor.js';
 import { KEYMAP, KEY_COMBOS } from '../shared/keymap.js';
 import { formatId } from '../shared/protocol.js';
 
@@ -33,6 +33,7 @@ const pressedButtons = new Set();
 let transfers = null;
 let chat = null;
 let remoteCursor = null;
+let remotePointer = null;
 // Copied files are fetched automatically below these sizes, on request above.
 const AUTO_PUSH_BYTES = 50 * 1024 * 1024;
 const AUTO_FETCH_BYTES = 200 * 1024 * 1024;
@@ -98,6 +99,7 @@ function buildUI() {
   // Why the remote mouse does nothing (Windows blocks injected input).
   ui.notice = h('div', { class: 'notice', id: 'input-blocked', hidden: true, role: 'status' });
   ui.stage.append(ui.overlay, ui.notice);
+  remotePointer = createRemotePointer(ui.stage, toStage);
 
   chat = new ChatView({ onSend: (text) => rtc?.sendControl({ type: 'chat', text }) });
   ui.chat = h('aside', { class: 'chat-panel', hidden: true },
@@ -146,6 +148,7 @@ function refreshToolbar() {
   ui.chatBtn.classList.toggle('active', st.chatOpen);
   ui.stage.classList.toggle('control', canControl());
   remoteCursor.setActive(canControl());
+  remotePointer.setControlling(canControl());
   clear(ui.endBtn, icon(st.ended ? 'x' : 'power', 'sm'), st.ended ? t('common.close') : t('viewer.disconnect'));
   ui.dot.className = `dot ${st.ended ? 'offline' : st.connected ? 'online' : 'connecting'}`;
 }
@@ -192,6 +195,7 @@ function startSession() {
   lastButtonSeq = 0;
   lastMove = null;
   remoteCursor.reset();
+  remotePointer.reset();
   rtc = new RtcSession({ role: 'viewer', iceServers: init.iceServers });
   rtc.acceptFile = async ({ name, size, clip: clipInfo }) => {
     const res = await api.invoke('files:begin', { name, size, clip: clipInfo });
@@ -222,6 +226,11 @@ function startSession() {
     if (!st.ended) onConnectionState('disconnected');
   });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
+  // From 1.3 hosts whose picture has no cursor: where it is ('p' events).
+  rtc.addEventListener('input', ({ detail: events }) => {
+    if (!Array.isArray(events)) return;
+    for (const ev of events) if (Array.isArray(ev) && ev[0] === 'p') remotePointer.update(ev[1], ev[2], ev[3]);
+  });
   setOverlay('negotiating');
   clearTimeout(timers.connect);
   timers.connect = setTimeout(() => {
@@ -329,6 +338,7 @@ function onControl(msg) {
       break;
     case 'cursor':
       remoteCursor.handle(msg);
+      remotePointer.shape(msg);
       break;
     case 'input-blocked':
       ui.notice.hidden = !msg.reason;
@@ -547,24 +557,32 @@ function sendMove(x, y) {
 
 const round4 = (v) => Math.round(v * 10000) / 10000;
 
-/** Maps a mouse position to normalized remote coordinates (null if outside). */
-function mapPoint(e, clamp = false) {
+/** Where the remote screen is drawn, in client coordinates (null without a picture). */
+function pictureRect() {
   const v = ui.video;
   if (!v.videoWidth) return null;
   const r = v.getBoundingClientRect();
-  let dw = r.width;
-  let dh = r.height;
-  let ox = r.left;
-  let oy = r.top;
-  if (st.scale === 'fit') {
-    const s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
-    dw = v.videoWidth * s;
-    dh = v.videoHeight * s;
-    ox = r.left + (r.width - dw) / 2;
-    oy = r.top + (r.height - dh) / 2;
-  }
-  let x = (e.clientX - ox) / dw;
-  let y = (e.clientY - oy) / dh;
+  if (st.scale !== 'fit') return { left: r.left, top: r.top, width: r.width, height: r.height };
+  const s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+  const width = v.videoWidth * s;
+  const height = v.videoHeight * s;
+  return { left: r.left + (r.width - width) / 2, top: r.top + (r.height - height) / 2, width, height };
+}
+
+/** Normalized remote point → stage coordinates (for elements drawn over the picture). */
+function toStage(x, y) {
+  const pic = pictureRect();
+  if (!pic) return null;
+  const s = ui.stage.getBoundingClientRect();
+  return { x: pic.left - s.left + ui.stage.scrollLeft + x * pic.width, y: pic.top - s.top + ui.stage.scrollTop + y * pic.height };
+}
+
+/** Maps a mouse position to normalized remote coordinates (null if outside). */
+function mapPoint(e, clamp = false) {
+  const pic = pictureRect();
+  if (!pic) return null;
+  let x = (e.clientX - pic.left) / pic.width;
+  let y = (e.clientY - pic.top) / pic.height;
   if (x < 0 || x > 1 || y < 0 || y > 1) {
     if (!clamp) return null;
     x = Math.min(1, Math.max(0, x));
@@ -638,7 +656,10 @@ function attachInput() {
     if (!pressedButtons.size && !ui.stage.contains(e.target)) return;
     if (e.target.closest?.('.overlay')) return;
     const p = mapPoint(e, pressedButtons.size > 0);
-    if (p) sendMove(p[0], p[1]);
+    if (p) {
+      remotePointer.localMove();
+      sendMove(p[0], p[1]);
+    }
   });
   ui.stage.addEventListener('wheel', (e) => {
     if (!canControl()) return;
@@ -709,7 +730,10 @@ function attachInput() {
 
   ui.video.addEventListener('resize', () => {
     applyVideoSize();
+    remotePointer.refresh();
   });
+  window.addEventListener('resize', () => remotePointer.refresh());
+  ui.stage.addEventListener('scroll', () => remotePointer.refresh(), { passive: true });
   ui.video.addEventListener('loadeddata', () => {
     if (!st.hadVideo) {
       st.hadVideo = true;

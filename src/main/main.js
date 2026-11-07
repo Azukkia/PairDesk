@@ -21,6 +21,7 @@ import { InputService } from './input-service.js';
 import { clipboardSequence, createClipboardFiles } from './clipboard-native.js';
 import { ClipboardTransfers } from './clipboard-transfer.js';
 import { VirtualCamera } from './camera/virtual-camera.js';
+import { NativeCapture } from './capture/native-capture.js';
 import { qrRows } from './qr.js';
 import { createTranslator, resolveLanguage } from '../shared/i18n.js';
 import { MIN_PERMANENT_PASSWORD_LENGTH, normalizeId, isValidId } from '../shared/protocol.js';
@@ -168,8 +169,9 @@ async function main() {
   let sessions;
   const network = new Network({ settings, config, log, canAccept: () => sessions.canAccept() });
   const virtualCamera = new VirtualCamera({ appPath, resourcesPath: process.resourcesPath, packaged: app.isPackaged, log });
+  const nativeCapture = new NativeCapture({ appPath, resourcesPath: process.resourcesPath, packaged: app.isPackaged, log });
   sessions = new SessionManager({
-    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, virtualCamera, log, appVersion: app.getVersion(), notify,
+    network, settings, input, clipboard: clipboardSync, clipTransfers, files, windows, virtualCamera, nativeCapture, log, appVersion: app.getVersion(), notify,
     // The translator changes with the language setting.
     t: (key, vars) => t(key, vars),
   });
@@ -417,6 +419,7 @@ async function main() {
   handle('camera:end', ['camera'], (ctx) => sessions.endSession(ctx.sid, 'camera-ended'));
   handle('host:consent', ['host'], (ctx, accept) => sessions.hostConsent(ctx.sid, Boolean(accept)));
   handle('host:displays', ['host'], () => sessions.listDisplays());
+  handle('capture:start', ['host'], (ctx, opts) => sessions.startNativeCapture(ctx, opts));
   on('host:set-display', ['host'], (ctx, displayId) => sessions.setHostDisplay(ctx, displayId));
   on('input:events', ['host'], (ctx, events) => sessions.injectInput(ctx, events));
   handle('host:end', ['host'], (ctx) => sessions.endSession(ctx.sid, 'host-ended'));
@@ -490,6 +493,7 @@ async function main() {
   if (E2E) {
     handle('e2e:cursor', ['main', ...SESSION], async () => ({ ...(await input.cursorPos()), shape: await input.cursorDebug() }));
     handle('e2e:vcam', ['main'], () => virtualCamera.stats());
+    handle('e2e:capture', ['main'], () => nativeCapture.stats());
   }
 
   // ───────────── start ─────────────
@@ -550,6 +554,7 @@ async function main() {
       network.stop();
       input.stop();
       virtualCamera.stop();
+      nativeCapture.stop();
     }, 200);
   });
   app.on('window-all-closed', () => {

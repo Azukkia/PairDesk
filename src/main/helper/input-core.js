@@ -48,12 +48,25 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
     });
     trackerPromise.then((t) => {
       tracker = t;
-      if (t && session?.control) t.start((msg) => toRenderer(msg));
+      if (t && session) t.start((msg) => toRenderer(msg), onCursorPosition);
     });
   }
 
   function stopTracker() {
     tracker?.stop();
+  }
+
+  // Where the cursor is on the shared display (normalized like input events):
+  // the viewer shows it when somebody moves the mouse here, since the picture
+  // itself has no cursor (src/main/capture/native-capture.js).
+  const round4 = (v) => Math.round(v * 10000) / 10000;
+  function onCursorPosition({ x, y }) {
+    const rect = session?.rect;
+    if (!rect) return;
+    const nx = (x - rect.x) / Math.max(1, rect.width - 1);
+    const ny = (y - rect.y) / Math.max(1, rect.height - 1);
+    const inside = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1;
+    toRenderer({ type: 'cursor-pos', x: round4(clamp01(nx)), y: round4(clamp01(ny)), inside });
   }
 
   function setBlocked(value) {
@@ -207,19 +220,20 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
             endSession();
             return;
           }
-          if (session?.id !== msg.id) {
+          const fresh = session?.id !== msg.id;
+          if (fresh) {
             endSession();
             session = { id: msg.id, seq: new PointerSequencer() };
           }
           const wasControl = session.control;
           Object.assign(session, { control: Boolean(msg.control), rect: msg.rect || session.rect, scale: msg.scale || 1 });
+          // Cursor shape and position: also for view-only sessions.
+          if (fresh) startTracker();
           if (session.control && !wasControl) {
             wake();
-            startTracker();
             startGuard();
           } else if (!session.control && wasControl) {
             injector.releaseAll();
-            stopTracker();
             stopGuard();
           }
           return;

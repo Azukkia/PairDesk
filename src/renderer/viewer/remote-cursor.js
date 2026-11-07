@@ -63,3 +63,70 @@ export function createRemoteCursor(el) {
     },
   };
 }
+
+const ARROW_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='18' height='24' viewBox='0 0 18 24'><path d='M1.5 1.5v18.2l4.6-4.4 3 6.9 3.2-1.4-3-6.8h6.4z' fill='#fff' stroke='#000' stroke-width='1.4' stroke-linejoin='round'/></svg>";
+
+// While the controller moves the mouse, its own cursor is the pointer: the
+// remote one is only drawn once it has been still for this long.
+const LOCAL_QUIET_MS = 700;
+
+/**
+ * The host's cursor, drawn over the picture when the picture has none (1.3+
+ * hosts send its position, see docs/PROTOCOL.md 4.2): shown when somebody
+ * moves the mouse over there, or when this viewer cannot control.
+ * `toStage(x, y)` maps a normalized point of the remote screen to stage
+ * coordinates (null when the picture is not shown).
+ */
+export function createRemotePointer(stage, toStage) {
+  const el = document.createElement('div');
+  el.className = 'remote-pointer';
+  el.hidden = true;
+  el.innerHTML = ARROW_SVG;
+  stage.append(el);
+  let pos = null; // { x, y, inside }
+  let shapeHidden = false;
+  let controlling = false;
+  let localAt = 0;
+  let timer = null;
+
+  const render = () => {
+    clearTimeout(timer);
+    const quietFor = performance.now() - localAt;
+    const show = pos?.inside && !shapeHidden && (!controlling || quietFor >= LOCAL_QUIET_MS);
+    const at = show ? toStage(pos.x, pos.y) : null;
+    el.hidden = !at;
+    // The arrow's tip is 1.5 px inside the image.
+    if (at) el.style.transform = `translate(${Math.round(at.x - 1.5)}px, ${Math.round(at.y - 1.5)}px)`;
+    // Shown again once the controller's mouse rests.
+    if (pos?.inside && controlling && quietFor < LOCAL_QUIET_MS) timer = setTimeout(render, LOCAL_QUIET_MS - quietFor + 10);
+  };
+
+  return {
+    /** ['p', x, y, inside] from the host. */
+    update(x, y, inside) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      pos = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)), inside: Boolean(inside) };
+      render();
+    },
+    /** The host's cursor shape ({type:'cursor'} message). */
+    shape(msg) {
+      shapeHidden = msg?.shape === 'none';
+      render();
+    },
+    setControlling(on) {
+      controlling = Boolean(on);
+      render();
+    },
+    /** The controller moved its own mouse over the picture. */
+    localMove() {
+      localAt = performance.now();
+      if (!el.hidden) render();
+    },
+    refresh: render,
+    reset() {
+      pos = null;
+      shapeHidden = false;
+      render();
+    },
+  };
+}

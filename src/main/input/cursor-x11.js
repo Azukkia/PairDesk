@@ -81,6 +81,8 @@ export function createX11CursorProbe() {
           height: img.height,
           xhot: img.xhot,
           yhot: img.yhot,
+          x: img.x,
+          y: img.y,
         };
         const wantImage = image === 'always' || (image === 'unknown' && !out.shape);
         if (wantImage && img.width && img.height && img.pixels) {

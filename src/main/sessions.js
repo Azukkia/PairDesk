@@ -21,9 +21,9 @@ export function physicalRect(display) {
 }
 
 export class SessionManager extends EventEmitter {
-  constructor({ network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera = null, log, appVersion, notify, t }) {
+  constructor({ network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera = null, nativeCapture = null, log, appVersion, notify, t }) {
     super();
-    Object.assign(this, { network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera, log, appVersion, notify, t });
+    Object.assign(this, { network, settings, input, clipboard, clipTransfers, files, windows, virtualCamera, nativeCapture, log, appVersion, notify, t });
     this.outgoing = new Map();
     this.host = null;
     this.camera = null; // a phone streaming its camera to this computer
@@ -373,6 +373,16 @@ export class SessionManager extends EventEmitter {
         primary: display.id === primaryId,
       };
     });
+  }
+
+  /**
+   * The host window asks for the picture of `displayId` without the mouse
+   * cursor (native-capture.js); it falls back to Chromium's capture when this
+   * resolves { ok: false }.
+   */
+  startNativeCapture(ctx, { displayId, fps } = {}) {
+    if (ctx !== this.host || ctx.state !== 'active' || !this.nativeCapture || ctx.win.isDestroyed()) return { ok: false, reason: 'unavailable' };
+    return this.nativeCapture.start(ctx.win.webContents, { rect: this.#displayRect(String(displayId)), fps });
   }
 
   #displayRect(displayId) {

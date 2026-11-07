@@ -8,6 +8,7 @@ import { RtcSession, TransferList, ChatView } from '../common/rtc.js';
 import { ClipboardBridge } from '../common/clipboard-bridge.js';
 import { AdaptiveScaler, CpuWatch, rankCodecs } from '../common/adaptive.js';
 import { formatId, QUALITY_PRESETS, versionAtLeast } from '../shared/protocol.js';
+import { startNativeCapture, captureDesktopAudio } from './native-capture.js';
 
 const app = document.getElementById('app');
 let init = null;
@@ -146,7 +147,36 @@ function toggleChat(open = !chatOpen) {
   resize();
 }
 
+// The picture without the mouse cursor (native-capture.js) while it works;
+// Chromium's capture, which paints the cursor in, otherwise.
+let nativeCapture = true;
+
 async function capture(display, withAudio, fps = captureFps) {
+  if (nativeCapture) {
+    try {
+      const native = await startNativeCapture(api, { displayId: display.displayId, fps, onFailure: onNativeFailure });
+      const tracks = [native.track];
+      if (withAudio) {
+        const audio = await captureDesktopAudio(display.sourceId).catch((err) => console.warn('audio capture unavailable', err.message));
+        if (audio) tracks.push(audio);
+      }
+      console.info(`[host] native capture ${native.width}x${native.height} (no cursor in the picture)`);
+      return new MediaStream(tracks);
+    } catch (err) {
+      console.info(`[host] native capture unavailable (${err.message}): Chromium capture`);
+      nativeCapture = false;
+    }
+  }
+  return captureChromium(display, withAudio, fps);
+}
+
+function onNativeFailure(err) {
+  console.warn(`[host] native capture stopped (${err.message}): Chromium capture`);
+  nativeCapture = false;
+  if (videoSender) recapture().catch((e) => console.warn('recapture failed', e?.message || e));
+}
+
+async function captureChromium(display, withAudio, fps) {
   const video = {
     mandatory: {
       chromeMediaSource: 'desktop',
@@ -184,7 +214,12 @@ async function applyQuality(mode) {
   if (quality !== previous) {
     scaler.reset(performance.now());
     const fps = QUALITY_PRESETS[quality].maxFramerate;
-    if (fps !== captureFps) {
+    if (fps !== captureFps && videoSender.track.pairdeskSetFps) {
+      // The native capture changes its rate on the fly.
+      captureFps = fps;
+      shownFps = fps;
+      videoSender.track.pairdeskSetFps(fps);
+    } else if (fps !== captureFps) {
       const choice = ++fpsChoice;
       captureFps = fps;
       try {
@@ -468,9 +503,14 @@ api.on('clipboard:local', (payload) => {
 // From the input helper: shape of the local mouse cursor (drawn by the viewer
 // with zero delay), and whether Windows currently blocks injected input.
 let inputBlocked = null;
+// When the picture has no cursor (native capture), the viewer also needs its
+// position: sent as ['p', x, y, inside] on the latest-wins pointer channel.
+const pictureHasCursor = () => !videoSender?.track?.pairdeskNative;
 window.pairdesk.inputPort.on((msg) => {
   if (msg?.type === 'cursor') {
-    if (perms.control) rtc?.sendControl(msg);
+    rtc?.sendControl(msg);
+  } else if (msg?.type === 'cursor-pos') {
+    if (!pictureHasCursor() && rtc?.pc.connectionState === 'connected') rtc.sendPointer([['p', msg.x, msg.y, msg.inside ? 1 : 0]]);
   } else if (msg?.type === 'input-state') {
     inputBlocked = msg.blocked || null;
     if (perms.control) rtc?.sendControl({ type: 'input-blocked', reason: inputBlocked });

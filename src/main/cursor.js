@@ -7,6 +7,8 @@
 //       unnamed cursor bitmap (Linux: Chromium/Electron apps, animated
 //       cursors). `png` (data URL) is sent once per id and per viewer; later
 //       messages only carry the id.
+// and, to `onPosition`, where the cursor is: { x, y } in physical pixels of
+// the virtual screen (only when it moved).
 
 import crypto from 'node:crypto';
 import { MAX_CURSOR_IMAGES } from '../shared/cursor-shapes.js';
@@ -69,6 +71,8 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
   }
 
   let lastRaw = null;
+  let onPosition = null;
+  let lastPos = null;
 
   function poll() {
     let cur;
@@ -78,6 +82,10 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
       return;
     }
     if (!cur) return; // secure desktop / UAC: keep the previous shape
+    if (onPosition && Number.isFinite(cur.x) && Number.isFinite(cur.y) && (cur.x !== lastPos?.x || cur.y !== lastPos?.y)) {
+      lastPos = { x: cur.x, y: cur.y };
+      onPosition(lastPos);
+    }
     // Fast path: same serial (X11) / handle (Windows) as last poll = no change.
     const raw = `${cur.serial ?? cur.handle}|${cur.shape}|${cur.hidden ?? ''}`;
     if (raw === lastRaw) return;
@@ -89,9 +97,13 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
   }
 
   return {
-    /** Starts polling; `onMessage` receives each {type:'cursor'} change. */
-    start(onMessage) {
+    /**
+     * Starts polling; `onMessage` receives each {type:'cursor'} change and
+     * `position` (optional) each new position.
+     */
+    start(onMessage, position = null) {
       send = onMessage;
+      onPosition = position;
       this.resync();
       clearInterval(timer);
       timer = setInterval(poll, intervalMs);
@@ -102,6 +114,7 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
     resync() {
       lastKey = null;
       lastRaw = null;
+      lastPos = null;
       sentImages = new Set();
     },
     /** Diagnostics (tests): what the probe reports right now. */
@@ -118,6 +131,7 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
       clearInterval(timer);
       timer = null;
       send = null;
+      onPosition = null;
     },
     close() {
       this.stop();

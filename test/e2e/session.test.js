@@ -13,8 +13,18 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import {
-  root, artifacts, hostRoot, ctrlRoot, startSignaling, launch, waitForWindow, sleep, poll, dumpDiagnostics,
+  root, artifacts, hostRoot, ctrlRoot, packaged, startSignaling, launch, waitForWindow, sleep, poll, dumpDiagnostics,
 } from './helpers.js';
+
+/** Whether the host captures its screen itself, without the cursor (src/main/capture). */
+function nativeCaptureExpected() {
+  if (process.platform === 'linux') return process.env.XDG_SESSION_TYPE !== 'wayland';
+  if (process.platform !== 'win32') return false;
+  const dll = packaged
+    ? path.join(path.dirname(packaged), 'resources', 'capture', 'PairDeskCapture.dll')
+    : path.join(hostRoot, 'native', 'bin', 'win32-x64', 'PairDeskCapture.dll');
+  return fs.existsSync(dll);
+}
 
 /** Places a window of `app` (selected by URL fragment) at the given bounds. */
 function placeWindow(app, fragment, bounds, top = false) {
@@ -158,6 +168,23 @@ async function scenario(host, ctrl) {
     return Math.abs(c.x - target.x) <= tolerance && Math.abs(c.y - target.y) <= tolerance ? c : null;
   }, { message: `host cursor near ${JSON.stringify(target)}` });
   assert.ok(cursor);
+
+  // 4b. The host sends its screen without the mouse cursor (native capture,
+  // no trailing copy of the controller's cursor in the picture); the viewer
+  // draws the host's cursor itself once its own mouse rests.
+  if (nativeCaptureExpected()) {
+    const cap = await host.main.evaluate(() => window.pairdesk.invoke('e2e:capture'));
+    assert.ok(cap?.active && cap.frames > 0, `native capture running: ${JSON.stringify(cap)}`);
+    const drawn = await poll(() => viewer.evaluate(() => {
+      const el = document.querySelector('.remote-pointer');
+      if (!el || el.hidden) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + 1.5, y: r.top + 1.5 };
+    }), { message: 'host cursor drawn over the picture' });
+    assert.ok(Math.abs(drawn.x - p.x) <= 4 && Math.abs(drawn.y - p.y) <= 4, `host cursor drawn at ${JSON.stringify(drawn)}, mouse at ${JSON.stringify(p)}`);
+    await viewer.mouse.move(p.x + 3, p.y + 3);
+    assert.ok(await viewer.evaluate(() => document.querySelector('.remote-pointer').hidden), 'hidden while the controller moves its mouse');
+  }
 
   // 5. Remote click + keyboard: type into the host's partner ID field.
   const box = await host.main.evaluate(() => {

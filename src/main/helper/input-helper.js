@@ -30,7 +30,8 @@ const core = createInputCore({
   guard,
   log,
   toMain: (msg) => parent.postMessage(msg),
-  createTracker: () => createCursorTracker({ log: logger, encodePng: pngDataUrl, scale: () => core.scale }),
+  // 30 polls a second: the viewer draws the cursor where it is reported (see input-core.js).
+  createTracker: () => createCursorTracker({ log: logger, encodePng: pngDataUrl, scale: () => core.scale, intervalMs: 33 }),
 });
 
 parent.on('message', (e) => core.handleMain(e.data, e.ports));
