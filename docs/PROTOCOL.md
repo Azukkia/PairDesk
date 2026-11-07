@@ -123,10 +123,15 @@ Receivers reject a counter already seen. `confirm.intro` is the same
   `{type:'intro', name, platform, appVersion, kind?}`; `platform` is
   `win32 | linux | darwin | android`; `kind` is `'control'` (default) or
   `'camera'` (1.2+, see 6).
-* `{type:'waiting'}`, `{type:'rejected', reason}`.
+* `{type:'waiting'}`, `{type:'rejected', reason}`; besides `busy`,
+  `declined`, `timeout`, 1.3+ macOS hosts answer `screen-permission` when
+  macOS does not let PairDesk record the screen (the picture would only show
+  the desktop background).
 * `{type:'accepted', name, caps, platform, appVersion, kind?}` (host → ctrl);
   `caps = {control, files, clipboard, audio}` (booleans), 1.2+ hosts echo
-  `kind`.
+  `kind`. 1.3+: `caps.noControl = 'permission'` when the host allows control
+  but its system does not (macOS without the Accessibility permission):
+  `control` is then false.
 * `{type:'signal', data}` where `data` is `{description: RTCSessionDescriptionInit}`
   or `{candidate: RTCIceCandidateInit}` (WebRTC, both ways).
 * `{type:'bye', reason}` ends the session.
@@ -161,7 +166,7 @@ current display, `0 ≤ x, y ≤ 1` (rounded to 4 decimals).
 | `['m', x, y, seq?, btnSeq?]` | move (pointer channel; reliable copy after 120 ms of rest) |
 | `['d', button, x, y, seq?]` / `['u', button, x?, y?, seq?]` | button down / up (0 left, 1 middle, 2 right, 3 back, 4 forward) |
 | `['w', dx, dy, seq?]` | wheel, pixels (positive dy = down), preceded by `['m', x, y, seq]` |
-| `['k', code, down]` | key, `code` = `KeyboardEvent.code` (`KeyA`, `Enter`, `ShiftLeft`, `MetaLeft`…), `down` 1/0 |
+| `['k', code, down]` | key, `code` = `KeyboardEvent.code` (`KeyA`, `Enter`, `ShiftLeft`, `MetaLeft`…), `down` 1/0 (see 4.1.1) |
 | `['r']` | release every pressed key and button |
 | `['t', text]` (1.2+) | type Unicode text (≤ 256 chars), for mobile keyboards |
 | `['a', action]` (1.2+, Android hosts) | `back`, `home`, `recents`, `notifications` |
@@ -180,6 +185,21 @@ move. The host drops a move whose `seq` is not above the last applied one, or
 whose `btnSeq` is above the last applied button/wheel event (it overtook a
 click still being retransmitted). Events without numbers are applied as they
 come.
+
+#### 4.1.1 Keys between a Mac and a PC (1.3+)
+
+Keys are physical positions; the host's keyboard layout picks the character.
+The shortcut key is Command on a Mac and Ctrl elsewhere, so when exactly one
+side is a Mac (`platform` of intro/accepted), `ControlLeft/Right` and
+`MetaLeft/Right` change places, and the **Mac side** does it: a Mac viewer
+swaps the keys it types (not the combinations of its menu, which are already
+in the host's terms), a Mac host swaps the keys it receives. A viewer that
+sends Mac shortcuts to a Mac host from a PC therefore sends them swapped.
+Other peers send and apply keys unchanged.
+
+A Mac viewer also sends keys whose release macOS does not report as a whole
+press (`down` then `up` at once): keys pressed while Command is held, and
+Caps Lock.
 
 ### 4.2 Control messages
 
