@@ -294,4 +294,9 @@
         <item quantity="many">Au moins %1$d caractères.</item>
         <item quantity="other">Au moins %1$d caractères.</item>
     </plurals>
+    <!-- Édition standard (sans service d'accessibilité, voir build.gradle.kts) -->
+    <string name="full_edition_needed">Cette édition de PairDesk permet aux ordinateurs de voir ce téléphone, pas de le piloter. Pour qu\'un ordinateur puisse le piloter, installez PairDesk complet (la même application, qui remplace celle-ci).</string>
+    <string name="full_edition_play_protect">Google Play Protect bloque PairDesk complet parce qu\'il utilise un service d\'accessibilité : mettez Play Protect en pause le temps de l\'installation (Play Store → votre profil → Play Protect → paramètres), puis réactivez-le.</string>
+    <string name="full_edition_download">Télécharger PairDesk complet</string>
+    <string name="host_control_needs_full">%1$s voit cet écran mais ne peut pas le piloter : il faut PairDesk complet pour piloter le téléphone.</string>
 </resources>

@@ -294,4 +294,9 @@
         <item quantity="one">At least %1$d character.</item>
         <item quantity="other">At least %1$d characters.</item>
     </plurals>
+    <!-- Standard edition (no accessibility service, see build.gradle.kts) -->
+    <string name="full_edition_needed">This edition of PairDesk lets computers watch this phone but not control it. To let a computer control it, install PairDesk Full (same app, it replaces this one).</string>
+    <string name="full_edition_play_protect">Google Play Protect blocks PairDesk Full because it uses an accessibility service: pause Play Protect while installing it (Play Store → your profile → Play Protect → settings), then turn it back on.</string>
+    <string name="full_edition_download">Download PairDesk Full</string>
+    <string name="host_control_needs_full">%1$s can see this screen but not control it: controlling the phone requires PairDesk Full.</string>
 </resources>

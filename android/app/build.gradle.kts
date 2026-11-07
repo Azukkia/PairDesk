@@ -21,8 +21,8 @@ android {
         // Announced to peers in intro / accepted (`appVersion`): the desktop
         // gates features on it, so it follows the desktop release that this
         // app is compatible with, not the package.json of the working tree.
-        versionCode = 10300
-        versionName = "1.3.0"
+        versionCode = 10301
+        versionName = "1.3.1"
     }
 
     signingConfigs {
@@ -40,6 +40,26 @@ android {
                 keyAlias = env("PAIRDESK_KEY_ALIAS")
                 keyPassword = env("PAIRDESK_KEY_PASSWORD")
             }
+        }
+    }
+
+    // Two editions of the same application (same id and signing key: one
+    // installs over the other). Google Play Protect blocks any app installed
+    // from outside a store that declares an accessibility service ("enhanced
+    // fraud protection"), whatever it does with it:
+    //  - standard (PairDesk.apk): no accessibility service. Controls a
+    //    computer, phone camera as a webcam, phone screen shown on a computer.
+    //  - full (PairDesk-full.apk): with it, a computer can also control the
+    //    phone. Play Protect has to be paused to install it.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("standard") {
+            dimension = "edition"
+            buildConfigField("boolean", "PHONE_CONTROL", "false")
+        }
+        create("full") {
+            dimension = "edition"
+            buildConfigField("boolean", "PHONE_CONTROL", "true")
         }
     }
 

@@ -12,7 +12,7 @@
 | **macOS 13+** (Mac Intel et Apple silicon M1/M2/M3…) | **[Télécharger PairDesk-mac.dmg](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-mac.dmg)** — voir [Installation sur Mac](#installation-macos) |
 | Linux (AppImage) | [PairDesk-x86_64.AppImage](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-x86_64.AppImage) |
 | Linux (Debian/Ubuntu) | [PairDesk-amd64.deb](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-amd64.deb) |
-| **Android 8+** (téléphone, tablette) | **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** (à partir de la version 1.3.0), ou le code QR affiché sur l'accueil de PairDesk pour PC |
+| **Android 8+** (téléphone, tablette) | **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)**, ou le code QR affiché sur l'accueil de PairDesk pour PC. Pour piloter le téléphone depuis un PC : [PairDesk-full.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-full.apk) (voir plus bas) |
 
 Ces liens sont permanents : ils pointent toujours vers la dernière version publiée. Toutes les versions restent disponibles sur la page [Releases](https://github.com/Azukkia/PairDesk/releases).
 
@@ -67,11 +67,16 @@ Les connexions récentes apparaissent sur l'accueil et dans **Récents** ; coche
 
 > Disponible à partir de la version 1.3.0. L'application n'a pas encore été testée sur tous les modèles de téléphones : signalez-nous tout souci.
 
+**Deux éditions** (la même application, l'une s'installe par-dessus l'autre) :
+
+- **PairDesk.apk** (recommandée) : contrôler un PC depuis le téléphone, caméra du téléphone comme webcam, écran du téléphone affiché sur un PC.
+- **PairDesk-full.apk** : tout cela, plus le **pilotage du téléphone depuis un PC**. Elle utilise pour cela un service d'accessibilité, et Google Play Protect bloque toute application installée hors du Play Store qui en déclare un (« Appli bloquée pour protéger votre appareil »). Pour l'installer : Play Store → votre profil → **Play Protect** → ⚙ → désactivez « Analyser les applis avec Play Protect », installez PairDesk-full.apk, puis réactivez Play Protect.
+
 1. Sur le téléphone, ouvrez **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** (ou scannez le code QR de l'accueil de PairDesk sur le PC), puis ouvrez le fichier téléchargé. Android demande d'autoriser l'installation depuis le navigateur : acceptez (l'application n'est pas sur le Play Store).
 2. L'application a, elle aussi, un **ID** et un **mot de passe**.
 
 - **Contrôler le PC depuis le téléphone** : saisissez l'ID du PC et son mot de passe. Le doigt déplace la souris (mode pavé tactile ou toucher direct), le clavier du téléphone tape sur le PC, une barre de touches donne Échap, Tab, Ctrl, Alt, Windows, les flèches et les combinaisons.
-- **Afficher le téléphone sur le PC** : sur le PC, connectez-vous à l'ID du téléphone. Le téléphone demande l'autorisation de partager son écran. Pour le **piloter** depuis le PC (souris, texte, boutons Retour / Accueil / Applications récentes de la barre d'outils), activez une fois le service d'accessibilité « PairDesk » proposé par l'application (sur Android 13 et plus, autorisez d'abord les « paramètres restreints » : Paramètres → Applications → PairDesk → ⋮ → Autoriser les paramètres restreints, car l'application ne vient pas du Play Store).
+- **Afficher le téléphone sur le PC** : sur le PC, connectez-vous à l'ID du téléphone. Le téléphone demande l'autorisation de partager son écran. Pour le **piloter** depuis le PC (souris, texte, boutons Retour / Accueil / Applications récentes de la barre d'outils), installez l'édition **PairDesk-full.apk** et activez une fois le service d'accessibilité « PairDesk » proposé par l'application (sur Android 13 et plus, autorisez d'abord les « paramètres restreints » : Paramètres → Applications → PairDesk → ⋮ → Autoriser les paramètres restreints, car l'application ne vient pas du Play Store).
 - **Caméra du téléphone comme webcam** : dans l'application, touchez **Utiliser comme webcam du PC**, choisissez le PC (ID + mot de passe). Sur le PC, une fenêtre montre l'image ; sous Windows, la webcam **« PairDesk Camera »** apparaît dans Teams, Zoom, Discord, OBS, Chrome/Edge… (choisissez-la dans leurs réglages vidéo). Le bouton « Changer de caméra » passe de la caméra arrière à l'avant. La webcam est installée pour votre compte Windows seulement, sans droits administrateur, et retirée à la désinstallation de PairDesk.
 
 ## Mises à jour automatiques

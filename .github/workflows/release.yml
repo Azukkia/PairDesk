@@ -10,6 +10,7 @@
 #   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe
 #   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-mac.dmg
 #   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk
+#   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-full.apk
 # (the Android app, signed with the key of the ANDROID_* repository secrets;
 # the desktop app's home screen offers it through a QR code).
 
@@ -166,7 +167,7 @@ jobs:
         run: bash .github/scripts/android-signing.sh --required
       - name: Tests and release APK
         working-directory: android
-        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleRelease
+        run: ./gradlew --no-daemon :core:test :app:testStandardDebugUnitTest :app:assembleRelease
       - name: Check the signature
         run: bash .github/scripts/android-apk.sh "$RUNNER_TEMP/apk" --expect-release-key
       - name: Upload to the draft release (versioned and fixed-name copies)
@@ -175,7 +176,9 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           cp "$RUNNER_TEMP/apk/PairDesk.apk" "$RUNNER_TEMP/apk/PairDesk-$VERSION.apk"
+          cp "$RUNNER_TEMP/apk/PairDesk-full.apk" "$RUNNER_TEMP/apk/PairDesk-full-$VERSION.apk"
           gh release upload "v$VERSION" "$RUNNER_TEMP/apk/PairDesk-$VERSION.apk" "$RUNNER_TEMP/apk/PairDesk.apk" \
+            "$RUNNER_TEMP/apk/PairDesk-full-$VERSION.apk" "$RUNNER_TEMP/apk/PairDesk-full.apk" \
             --clobber --repo "$GITHUB_REPOSITORY"
       - name: Remove the signing key
         if: always()

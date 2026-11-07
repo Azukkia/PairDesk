@@ -236,13 +236,15 @@ jobs:
         run: bash .github/scripts/android-signing.sh
       - name: Tests and release APK
         working-directory: android
-        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleRelease
-      - name: Check the signature, name the APK PairDesk.apk
+        run: ./gradlew --no-daemon :core:test :app:testStandardDebugUnitTest :app:assembleRelease
+      - name: Check the signatures, name the APKs PairDesk.apk and PairDesk-full.apk
         run: bash .github/scripts/android-apk.sh "$RUNNER_TEMP/apk"
       - uses: actions/upload-artifact@v4
         with:
           name: PairDesk-android
-          path: ${{ runner.temp }}/apk/PairDesk.apk
+          path: |
+            ${{ runner.temp }}/apk/PairDesk.apk
+            ${{ runner.temp }}/apk/PairDesk-full.apk
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4

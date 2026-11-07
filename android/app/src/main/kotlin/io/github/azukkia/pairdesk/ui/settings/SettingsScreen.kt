@@ -63,6 +63,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.azukkia.pairdesk.R
+import io.github.azukkia.pairdesk.ui.components.FullEditionNotice
+import io.github.azukkia.pairdesk.ui.components.phoneControlAvailable
 import io.github.azukkia.pairdesk.data.NetworkMode
 import io.github.azukkia.pairdesk.data.SettingsStore
 import io.github.azukkia.pairdesk.host.PairDeskAccessibilityService
@@ -142,31 +144,36 @@ private fun IncomingSection(vm: SettingsViewModel) {
             checked = settings.allowIncoming,
             onChange = vm::setAllowIncoming,
         )
-        SwitchRow(
-            title = stringResource(R.string.settings_allow_control),
-            description = stringResource(R.string.settings_allow_control_desc),
-            checked = settings.allowControl,
-            enabled = settings.allowIncoming,
-            onChange = vm::setAllowControl,
-        )
-        val service by PairDeskAccessibilityService.instance.collectAsStateWithLifecycle()
-        Text(
-            stringResource(if (service != null) R.string.settings_accessibility_on else R.string.settings_accessibility_off),
-            style = MaterialTheme.typography.bodySmall,
-            color = if (service != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedButton(
-            onClick = {
-                try {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                } catch (_: ActivityNotFoundException) {
-                    context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-            },
-        ) {
-            Icon(painterResource(R.drawable.ic_accessibility), contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.settings_open_accessibility))
+        // Standard edition: watched only, see FullEditionNotice.
+        if (!phoneControlAvailable) {
+            FullEditionNotice()
+        } else {
+            SwitchRow(
+                title = stringResource(R.string.settings_allow_control),
+                description = stringResource(R.string.settings_allow_control_desc),
+                checked = settings.allowControl,
+                enabled = settings.allowIncoming,
+                onChange = vm::setAllowControl,
+            )
+            val service by PairDeskAccessibilityService.instance.collectAsStateWithLifecycle()
+            Text(
+                stringResource(if (service != null) R.string.settings_accessibility_on else R.string.settings_accessibility_off),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (service != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = {
+                    try {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    } catch (_: ActivityNotFoundException) {
+                        context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                },
+            ) {
+                Icon(painterResource(R.drawable.ic_accessibility), contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.settings_open_accessibility))
+            }
         }
     }
 }

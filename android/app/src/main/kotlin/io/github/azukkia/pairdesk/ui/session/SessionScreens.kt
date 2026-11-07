@@ -66,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.azukkia.pairdesk.AppGraph
 import io.github.azukkia.pairdesk.R
+import io.github.azukkia.pairdesk.ui.components.FullEditionNotice
+import io.github.azukkia.pairdesk.ui.components.phoneControlAvailable
 import io.github.azukkia.pairdesk.core.Protocol
 import io.github.azukkia.pairdesk.host.HostPhase
 import io.github.azukkia.pairdesk.host.HostSession
@@ -217,7 +219,10 @@ private fun HostLive(graph: AppGraph, session: HostSession, state: HostState) {
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.host_view_only), style = MaterialTheme.typography.titleSmall)
                     }
-                    if (!settings.allowControl) {
+                    if (!phoneControlAvailable) {
+                        Text(stringResource(R.string.host_control_needs_full, name), style = MaterialTheme.typography.bodySmall)
+                        FullEditionNotice()
+                    } else if (!settings.allowControl) {
                         Text(stringResource(R.string.host_control_disabled, name), style = MaterialTheme.typography.bodySmall)
                     } else if (service == null) {
                         Text(stringResource(R.string.host_control_needs_service, name), style = MaterialTheme.typography.bodySmall)
