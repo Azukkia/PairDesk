@@ -4,9 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  app, ClipboardItem, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, safeStorage, session, shell,
+  app, ClipboardItem, Menu, Notification, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, safeStorage, session, shell,
+  systemPreferences,
 } from 'electron';
 import { log, initLogFile } from './log.js';
+import { createPermissions } from './permissions.js';
 import { loadConfig } from './config.js';
 import { Settings } from './settings.js';
 import { Network } from './network.js';
@@ -135,6 +137,8 @@ async function main() {
   nativeTheme.themeSource = settings.get('theme');
 
   registerAppProtocol();
+  // macOS privacy permissions needed to be controlled (null elsewhere).
+  const permissions = createPermissions({ systemPreferences, desktopCapturer, openExternal: (url) => shell.openExternal(url), log });
 
   const input = new InputService({ appPath, log });
   await input.start();
@@ -184,6 +188,7 @@ async function main() {
     log,
   });
   drops.cleanup();
+  sessions.permissions = permissions;
 
   const updater = new Updater({ log, isPackaged: app.isPackaged, currentVersion: app.getVersion() });
 
@@ -207,6 +212,7 @@ async function main() {
     update: updater.state,
     sessions: sessions.summary(),
     input: { available: input.available, reason: input.reason || null },
+    permissions: permissions.status(),
     lockedFor: network.limiter.lockedFor(),
   });
   let pushTimer = null;
@@ -246,6 +252,10 @@ async function main() {
     quitting = true;
     sessions.endAll();
     settings.saveNow();
+  });
+  // Back from System Settings: the macOS permissions may have changed.
+  app.on('browser-window-focus', (_e, win) => {
+    if (win === windows.main) pushState();
   });
 
   const applyLaunchAtStartup = (enabled) => {
@@ -351,6 +361,12 @@ async function main() {
     return { url: config.androidApkUrl, qr: qrRows(config.androidApkUrl), available: apkAvailable };
   });
   handle('app:open-logs', ['main'], () => shell.openPath(path.dirname(log.file || app.getPath('userData'))));
+  handle('app:open-privacy', ['main'], (_ctx, kind) => permissions.open(String(kind)));
+  handle('app:relaunch', ['main'], () => {
+    quitting = true;
+    app.relaunch();
+    app.quit();
+  });
   handle('settings:update', ['main'], (_ctx, patch) => {
     settings.update(patch);
     return publicSettings();

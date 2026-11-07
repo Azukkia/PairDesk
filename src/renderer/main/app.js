@@ -82,9 +82,31 @@ function renderBanners() {
       h('div', { class: 'text' }, h('b', null, t(key, { name: incoming.peerName })), h('span', { class: 'small muted' }, `ID ${formatId(incoming.peerId)}`)),
       h('button', { class: 'btn danger', onclick: () => api.invoke('session:end-incoming') }, icon('power', 'sm'), t('home.endSession'))));
   }
+  const permissions = permissionsBanner();
+  if (permissions) list.push(permissions);
   const banner = updateBanner(true);
   if (banner) list.push(banner);
   clear(els.banners, list);
+}
+
+// macOS: the privacy permissions needed to be controlled (re-checked each
+// time the window gets the focus back, e.g. from System Settings).
+function permissionsBanner() {
+  const p = state.permissions;
+  if (!p || !state.settings.allowIncoming) return null;
+  const row = (text, button) => h('div', { class: 'perm-row' }, h('span', { class: 'small' }, text), button);
+  const open = (kind) => h('button', { class: 'btn small', dataset: { perm: kind }, onclick: () => api.invoke('app:open-privacy', kind) },
+    icon('external', 'sm'), t('perm.open'));
+  const rows = [];
+  if (p.restart) {
+    rows.push(row(t('perm.restart'), h('button', { class: 'btn small', onclick: () => api.invoke('app:relaunch') }, icon('refresh', 'sm'), t('perm.restartButton'))));
+  } else if (p.screen !== 'granted') {
+    rows.push(row(t('perm.screen'), open('screen')));
+  }
+  if (!p.accessibility && state.settings.allowControl) rows.push(row(t('perm.accessibility'), open('accessibility')));
+  if (!rows.length) return null;
+  return h('div', { class: 'banner warning', id: 'permissions-banner' }, icon('shield', 'lg'),
+    h('div', { class: 'text' }, h('b', null, t('perm.title')), rows, p.restart && rows.length === 1 ? null : h('span', { class: 'small muted' }, t('perm.hint'))));
 }
 
 function updateBanner(compact) {

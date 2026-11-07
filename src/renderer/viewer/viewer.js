@@ -123,6 +123,7 @@ function refreshToolbar() {
   ui.id.textContent = `ID ${formatId(init.peer.id)}`;
   const live = !st.ended;
   ui.viewOnly.hidden = Boolean(caps.control) || !live;
+  ui.viewOnly.title = caps.noControl === 'permission' ? t('viewer.viewOnlyMac') : t('viewer.viewOnlyHelp');
   ui.scaleBtn.hidden = !live;
   ui.qualityBtn.hidden = !live;
   ui.keysBtn.hidden = !caps.control || !live || androidHost();
@@ -245,6 +246,7 @@ function onConnectionState(state) {
   if (st.ended) return;
   clearTimeout(timers.lost);
   if (state === 'connected') {
+    if (!st.connected && init.caps?.noControl === 'permission') toast(t('viewer.viewOnlyMac'), { type: 'info' });
     st.connected = true;
     clearTimeout(timers.connect);
     clearTimeout(timers.fail);

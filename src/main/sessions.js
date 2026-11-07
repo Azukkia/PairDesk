@@ -218,11 +218,16 @@ export class SessionManager extends EventEmitter {
   // ───────────────────────── incoming session ─────────────────────────
 
   #hostPerms() {
+    // macOS without the Accessibility permission: view only, and the viewer
+    // is told why (`noControl`). `permissions`: src/main/permissions.js.
+    const control = this.settings.get('allowControl') && this.input.available;
+    const allowed = this.permissions?.canControl() ?? true;
     return {
-      control: this.settings.get('allowControl') && this.input.available,
+      control: control && allowed,
       files: this.settings.get('allowFileTransfer'),
       clipboard: this.settings.get('allowClipboard'),
       audio: this.settings.get('shareAudio') && process.platform === 'win32',
+      ...(control && !allowed ? { noControl: 'permission' } : {}),
     };
   }
 
@@ -233,6 +238,14 @@ export class SessionManager extends EventEmitter {
     }
     if (this.host) {
       this.signaling.reject(session.sid, 'busy');
+      return;
+    }
+    // macOS without the Screen Recording permission: the picture would only
+    // show the desktop background. The controller gets a clear error instead.
+    if (this.permissions && !this.permissions.canCapture()) {
+      this.log.warn(`[session] ${session.peerId} refused: no Screen Recording permission`);
+      this.signaling.reject(session.sid, 'screen-permission');
+      this.notify(this.t('notify.screenPermissionTitle'), this.t('notify.screenPermissionBody', { name: session.peerName || session.peerId }));
       return;
     }
     const needConsent = this.settings.get('confirmIncoming');
