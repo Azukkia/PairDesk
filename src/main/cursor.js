@@ -22,6 +22,7 @@ async function createProbe(log) {
     if (process.platform === 'linux' && process.env.XDG_SESSION_TYPE !== 'wayland') {
       return (await import('./input/cursor-x11.js')).createX11CursorProbe();
     }
+    if (process.platform === 'darwin') return (await import('./input/cursor-darwin.js')).createDarwinCursorProbe();
   } catch (err) {
     log?.warn?.(`[cursor] shape tracking unavailable: ${err.message}`);
   }
@@ -58,7 +59,7 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
       .update(cur.bgra)
       .digest('base64url')
       .slice(0, 16);
-    const msg = { type: 'cursor', shape: 'custom', id, hot: [cur.xhot, cur.yhot], scale: scale() };
+    const msg = { type: 'cursor', shape: 'custom', id, hot: [cur.xhot, cur.yhot], scale: cur.scale ?? scale() };
     // Same cache rule as the viewer (remote-cursor.js).
     if (sentImages.delete(id)) {
       sentImages.add(id);

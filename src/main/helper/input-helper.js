@@ -31,7 +31,10 @@ const core = createInputCore({
   log,
   toMain: (msg) => parent.postMessage(msg),
   // 30 polls a second: the viewer draws the cursor where it is reported (see input-core.js).
-  createTracker: () => createCursorTracker({ log: logger, encodePng: pngDataUrl, scale: () => core.scale, intervalMs: 33 }),
+  // --no-cursor-shape: restarted after a crash on macOS (see input-service.js).
+  createTracker: process.argv.includes('--no-cursor-shape')
+    ? null
+    : () => createCursorTracker({ log: logger, encodePng: pngDataUrl, scale: () => core.scale, intervalMs: 33 }),
 });
 
 parent.on('message', (e) => core.handleMain(e.data, e.ports));

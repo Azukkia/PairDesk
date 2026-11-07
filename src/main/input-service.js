@@ -25,13 +25,18 @@ export class InputService extends EventEmitter {
     this.stopping = false;
     this.restarts = 0;
     this.readyPromise = null;
+    // macOS: if the helper dies, it restarts without cursor shape tracking
+    // (AppKit calls through koffi, cursor-darwin.js) so that remote control
+    // keeps working whatever went wrong there.
+    this.noCursorShape = false;
   }
 
   /** Starts the helper; resolves once it reported whether injection works. */
   start() {
     this.stopping = false;
     this.readyPromise = new Promise((resolve) => {
-      const child = utilityProcess.fork(this.entry, [], { serviceName: 'PairDesk Input', stdio: 'pipe' });
+      const args = this.noCursorShape ? ['--no-cursor-shape'] : [];
+      const child = utilityProcess.fork(this.entry, args, { serviceName: 'PairDesk Input', stdio: 'pipe' });
       this.child = child;
       const timer = setTimeout(() => {
         this.reason = 'timeout';
@@ -63,6 +68,10 @@ export class InputService extends EventEmitter {
         this.queries.clear();
         if (this.stopping) return;
         this.log.warn(`[input] helper exited (${code}), restarting`);
+        if (process.platform === 'darwin' && !this.noCursorShape) {
+          this.noCursorShape = true;
+          this.log.warn('[input] the helper restarts without cursor shape tracking');
+        }
         const delay = Math.min(10_000, 500 * 2 ** Math.min(this.restarts++, 5));
         setTimeout(() => {
           if (!this.stopping) this.start();
