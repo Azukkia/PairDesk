@@ -40,8 +40,8 @@
     <string name="home_password_saved_hint">Leave empty to use the remembered password</string>
     <string name="home_remember">Remember the password</string>
     <string name="home_control">Control</string>
-    <string name="home_camera">Camera</string>
-    <string name="home_camera_desc">Use the phone as a webcam for this computer</string>
+    <string name="home_camera">Use as the computer\'s webcam</string>
+    <string name="home_camera_desc">The computer shows this phone\'s camera and, on Windows, offers it to your apps as the “PairDesk Camera” webcam (Teams, Zoom, OBS…).</string>
     <string name="home_recents">Recent connections</string>
     <string name="home_no_recents">No recent connections yet.</string>
     <string name="home_recent_saved">Password remembered</string>
@@ -120,8 +120,6 @@
     <string name="session_end_confirm_body">The connection with %1$s will be closed.</string>
     <string name="session_end">End session</string>
     <string name="session_back_home">Back to home</string>
-    <string name="session_placeholder_camera">The camera preview will be displayed here.</string>
-    <string name="session_placeholder_host">The screen of this phone will be shared from here.</string>
 
 
     <!-- Viewer (controlling a computer); same wording as the desktop viewer -->
@@ -229,7 +227,7 @@
 
     <!-- Ongoing session notification -->
     <string name="notify_channel_sessions">Remote sessions</string>
-    <string name="notify_channel_sessions_desc">Shown while this phone controls a computer</string>
+    <string name="notify_channel_sessions_desc">Shown while a remote session runs</string>
     <string name="notify_session_title">PairDesk session in progress</string>
     <string name="notify_session_one">Controlling %1$s</string>
     <string name="notify_session_many">Controlling %1$s</string>
@@ -242,9 +240,50 @@
     <string name="incoming_expires">The request expires in %1$d s.</string>
     <string name="incoming_accept">Accept</string>
     <string name="incoming_decline">Decline</string>
-    <string name="incoming_active">%1$s is connected to this phone.</string>
     <string name="incoming_unknown_name">Unknown device</string>
-    <string name="incoming_title_active">Incoming session</string>
+
+    <!-- Camera (phone → computer webcam), screen sharing (computer → phone), notifications -->
+    <string name="session_connecting">Connecting to the computer…</string>
+    <string name="camera_starting">Starting the camera…</string>
+    <string name="camera_live">Live</string>
+    <string name="camera_front">Front camera</string>
+    <string name="camera_back">Back camera</string>
+    <string name="camera_switch">Switch camera</string>
+    <string name="camera_background_hint">The camera keeps streaming if you leave PairDesk.</string>
+    <string name="camera_permission_title">Camera access needed</string>
+    <string name="camera_permission_body">PairDesk needs the camera to send its picture to %1$s.</string>
+    <string name="camera_permission_denied">Camera access was refused. Allow it in the app settings (Permissions → Camera).</string>
+    <string name="camera_permission_grant">Allow the camera</string>
+    <string name="open_app_settings">Open app settings</string>
+    <string name="camera_error_no_camera">This phone has no usable camera.</string>
+    <string name="camera_error">The camera stopped (another app may be using it).</string>
+    <string name="host_title">Screen sharing</string>
+    <string name="host_live">Connected</string>
+    <string name="host_viewing">%1$s sees the screen of this phone.</string>
+    <string name="host_controlling">%1$s sees and controls this phone.</string>
+    <string name="host_view_only">View only</string>
+    <string name="host_control_needs_service">To let %1$s control this phone, turn on “PairDesk remote control” in the accessibility settings (under Installed or Downloaded apps). If Android says the setting is restricted, first open the app info, tap ⋮ and choose “Allow restricted settings”.</string>
+    <string name="host_control_disabled">Control of this phone is turned off in the settings: %1$s can only watch.</string>
+    <string name="host_app_info">App info</string>
+    <string name="host_keep_on">The screen stays on during the session. You can end it at any time from the notification.</string>
+    <string name="host_capture_failed">The screen sharing could not start.</string>
+    <string name="host_failed">The connection with the computer could not be established or was lost.</string>
+    <string name="host_chat_hint">Messages from %1$s appear here.</string>
+    <string name="incoming_consent_hint">Android will then ask you to allow the screen sharing.</string>
+    <string name="incoming_waiting_consent">Waiting for the screen sharing permission…</string>
+    <string name="notify_channel_requests">Connection requests</string>
+    <string name="notify_channel_requests_desc">A computer asks to view this phone</string>
+    <string name="notify_channel_chat">Chat messages</string>
+    <string name="notify_channel_chat_desc">Messages of the computer connected to this phone</string>
+    <string name="notify_camera_title">Camera in use by PairDesk</string>
+    <string name="notify_camera_text">Sent to %1$s</string>
+    <string name="notify_host_title">Screen shared with PairDesk</string>
+    <string name="notify_host_viewed">%1$s sees the screen of this phone</string>
+    <string name="notify_host_controlled">%1$s sees and controls this phone</string>
+    <string name="accessibility_label">PairDesk remote control</string>
+    <string name="accessibility_description">Lets a computer you accepted in PairDesk tap, swipe and type on this phone during a remote session. It acts only while you share this phone’s screen with that computer, reads nothing but the text field being typed into, and collects nothing.</string>
+    <string name="settings_accessibility_on">The PairDesk accessibility service is on.</string>
+    <string name="settings_accessibility_off">The PairDesk accessibility service is off: partners can only watch this phone.</string>
 
     <!-- Counted texts -->
     <plurals name="status_via_relays">

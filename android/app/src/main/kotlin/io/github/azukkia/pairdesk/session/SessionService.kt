@@ -117,8 +117,16 @@ class SessionService : Service() {
     }
 }
 
-/** Starts, updates and stops [SessionService] for the running sessions. Main thread. */
-class SessionForeground(private val context: Context, private val log: Logger) {
+/**
+ * Starts, updates and stops a foreground service ([SessionService] by
+ * default) for the running sessions of one kind: the service reads the
+ * sessions itself when started. Main thread.
+ */
+class SessionForeground(
+    private val context: Context,
+    private val log: Logger,
+    private val service: Class<out Service> = SessionService::class.java,
+) {
     private var running = false
     private var shown: List<String> = emptyList()
 
@@ -127,12 +135,12 @@ class SessionForeground(private val context: Context, private val log: Logger) {
             if (running) {
                 running = false
                 shown = emptyList()
-                context.stopService(Intent(context, SessionService::class.java))
+                context.stopService(Intent(context, service))
             }
             return
         }
         if (running && names == shown) return
-        val intent = Intent(context, SessionService::class.java)
+        val intent = Intent(context, service)
         try {
             if (running) context.startService(intent) else ContextCompat.startForegroundService(context, intent)
             running = true

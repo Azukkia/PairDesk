@@ -443,6 +443,23 @@ class PairDeskNetwork(
         }
     }
 
+    /**
+     * The user accepted the pending request [sid] and Android now asks them to
+     * allow the screen capture: the request waits [ms] more (instead of the
+     * remaining consent delay) before being declined with `timeout`.
+     */
+    fun holdIncoming(sid: String, ms: Long): Boolean = synchronized(lock) {
+        val current = _incoming.value
+        if (current == null || current.sid != sid || current.state != IncomingState.PENDING) return false
+        consentJob?.cancel()
+        _incoming.value = current.copy(deadline = clock() + ms)
+        consentJob = scope.launch {
+            delay(ms)
+            declineIncoming(sid, "timeout")
+        }
+        true
+    }
+
     /** Declines the pending incoming session [sid] (`rejected` with [reason]). */
     fun declineIncoming(sid: String, reason: String = "declined") {
         val current = synchronized(lock) {
