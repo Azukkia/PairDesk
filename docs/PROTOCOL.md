@@ -255,7 +255,11 @@ Both ways:
 * Files: `{type:'file-offer', fid, name, size, drop?, clip?}` → `{type:'file-accept'|'file-reject', fid}`;
   the sender then opens data channel `file:<fid>` and sends the content in
   chunks (≤ 16 KiB), the receiver answers `{type:'file-done', fid, ok}` once
-  `size` bytes arrived; either side may send `{type:'file-cancel', fid}`.
+  `size` bytes arrived (anything beyond is ignored); either side may send
+  `{type:'file-cancel', fid}`, e.g. a sender that cannot open the channel.
+  1.3+ peers close `file:<fid>` once the file is over (the receiver when
+  `size` bytes arrived or on cancel, the sender after `file-done` or a
+  failure): a connection only has a few hundred data channels.
   `drop` (1.2+, controller → host): `{id, x, y, n}` when the files were dropped
   at a point of the remote screen (`x`, `y` normalized like input events, `n`
   files share the same `id`): once the `n` files arrived, a 1.2 host replays a
@@ -290,7 +294,10 @@ A phone streams its camera to a computer, which exposes it as a webcam.
 
 * The phone connects like a controller with `intro.kind = 'camera'`.
 * A 1.2+ host answers `accepted` with `kind:'camera'`; anything else (older
-  host) must be treated as "camera not supported, update PairDesk".
+  host) must be treated as "camera not supported, update PairDesk". When the
+  computer asks its user first ("confirm incoming connections", 1.3+), it
+  sends `waiting` before, and `rejected` (`declined`, `timeout`) if refused,
+  as for a control session.
 * The host (computer) is still the offerer: its offer contains a `recvonly`
   video m-line (no screen capture) and the `control` channel. The phone answers
   with its camera track (`sendonly`), 1280×720 at 30 fps when possible.
