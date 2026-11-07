@@ -19,7 +19,7 @@ Ces liens sont permanents : ils pointent toujours vers la dernière version publ
 
 | | |
 |---|---|
-| **Contrôle à distance** | Image de l'écran en temps réel, souris (clics, molette, glisser), clavier (y compris AZERTY, touches mortes, AltGr), combinaisons spéciales (Alt+Tab, Win+R, Ctrl+Maj+Échap…), choix de l'écran si plusieurs moniteurs, plein écran, ajustement ou taille réelle, 3 niveaux de qualité. Le **curseur suit votre souris sans aucun retard** (c'est votre propre curseur, qui prend la forme de celui de l'ordinateur distant : flèche, texte, main…). |
+| **Contrôle à distance** | Image de l'écran en temps réel, souris (clics, molette, glisser), clavier (y compris AZERTY, touches mortes, AltGr), combinaisons spéciales (Alt+Tab, Win+R, Ctrl+Maj+Échap…), choix de l'écran si plusieurs moniteurs, plein écran, ajustement ou taille réelle, 3 niveaux de qualité. Le **curseur suit votre souris sans aucun retard** (c'est votre propre curseur, qui prend la forme de celui de l'ordinateur distant : flèche, texte, main…), sans second curseur qui traîne dans l'image. |
 | **Échanges** | **Copier-coller dans les deux sens** (Ctrl+C / Ctrl+V) : texte, texte mis en forme, images, fichiers et dossiers. **Glisser-déposer** un fichier dans la fenêtre de contrôle : il arrive à l'endroit où vous l'avez lâché (Bureau, dossier ouvert, application…). Transfert de fichiers par bouton (enregistrés dans `Téléchargements\PairDesk`), discussion instantanée, son de l'ordinateur distant (Windows). |
 | **Téléphone Android** | Contrôlez votre PC depuis le téléphone, affichez et pilotez l'écran du téléphone sur le PC, ou **utilisez la caméra du téléphone comme webcam** du PC (« PairDesk Camera » dans Teams, Zoom, Discord, OBS, navigateurs…). |
 | **Accès non surveillé** | Mot de passe personnel permanent + démarrage automatique avec Windows : connectez-vous à vos machines à tout moment. Mots de passe mémorisés par partenaire (chiffrés par Windows). |
@@ -88,7 +88,13 @@ PairDesk 1.1 réduit le délai de l'image de 1-2 s à quelques centaines de mill
 
 Mesures (ordinateur distant en 1080p, lien simulé) : avec 1,2 Mb/s en envoi, délai médian **617 → 217 ms** et 95ᵉ centile **1,6 s → 0,35 s** (1,7 → 26 images/s) ; avec 4 Mb/s, médian **417 → 184 ms**.
 
-Les niveaux de qualité : *Vitesse optimisée* (le plus fluide, 60 i/s, résolution réduite), *Équilibrée* (par défaut : net et réactif) et *Qualité optimisée* (image la plus nette, pour les connexions rapides).
+PairDesk 1.3 supprime l'impression de souris « en retard » :
+
+- **Plus de second curseur qui traîne** : l'image envoyée ne contient plus le curseur de l'ordinateur distant (capture d'écran native : *Desktop Duplication* sous Windows, *MIT-SHM* sous Linux X11). Votre propre curseur, instantané, est le seul pointeur ; le curseur distant n'est dessiné que lorsque quelqu'un bouge la souris de l'autre côté (ou en mode affichage seul).
+- **60 images/s** en mode *Équilibré*, et chaque image part dès que l'écran change (rien n'est envoyé quand il ne bouge pas).
+- Les mouvements de souris partent dès qu'ils se produisent, sans attendre le rafraîchissement suivant de l'écran (jusqu'à 16 ms gagnées).
+
+Les niveaux de qualité : *Vitesse optimisée* (le plus fluide, résolution réduite), *Équilibrée* (par défaut : net et réactif, 60 i/s) et *Qualité optimisée* (image la plus nette, pour les connexions rapides).
 
 ## Sécurité — comment ça marche
 
