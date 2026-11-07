@@ -9,11 +9,10 @@
 // left the clipboard (a paste may still be copying them).
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { richParts, MAX_IMAGE_BYTES } from './clipboard.js';
-import { sanitizeFileName } from './files.js';
+import { sanitizeFileName, privateTempRoot } from './files.js';
 
 const MAX_ENTRIES = 5000;
 const MAX_ANNOUNCED = 200;
@@ -68,7 +67,7 @@ export function safeRelative(rel) {
 }
 
 export class ClipboardTransfers {
-  constructor({ clipboard, log, stagingRoot = path.join(os.tmpdir(), 'PairDesk', 'clipboard') }) {
+  constructor({ clipboard, log, stagingRoot = path.join(privateTempRoot(), 'clipboard') }) {
     Object.assign(this, { clipboard, log, stagingRoot });
     this.announced = new Map(); // cid → our copied files as announced: { cid, paths, list? } (oldest first)
     this.inbound = new Map(); // ctx → { cid, text, html, rtf, image, files, dir, expected, received, tops, generation }

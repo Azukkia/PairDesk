@@ -400,7 +400,8 @@ async function scenario(host, ctrl) {
     await viewer.keyboard.up('Control');
     const received = await poll(async () => {
       const files = await readFiles();
-      return files.find((f) => f.includes(`PairDesk${path.sep}clipboard`) && path.basename(f) === 'copie test.txt') || null;
+      // Staging folder: <temp>/PairDesk[-<uid>]/clipboard (1.2: <temp>/PairDesk/clipboard).
+      return files.find((f) => /[\\/]PairDesk(-[\w-]+)?[\\/]clipboard[\\/]/.test(f) && path.basename(f) === 'copie test.txt') || null;
     }, { timeout: 20_000, message: 'copied file in the host clipboard' });
     assert.equal(fs.readFileSync(received, 'utf8'), 'contenu copié');
   }

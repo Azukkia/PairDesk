@@ -14,9 +14,9 @@
 // If the drag cannot start, the files are moved to Downloads/PairDesk.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { privateTempRoot } from './files.js';
 
 const MAX_FILES = 100;
 const EXPIRES_MS = 15 * 60_000;
@@ -49,7 +49,7 @@ export class DropManager {
    * @param {object} o.input     InputService (drag, dragStarted)
    * @param {() => string} o.fallbackDir  Downloads/PairDesk
    */
-  constructor({ target, windows, input, fallbackDir, log, stagingRoot = path.join(os.tmpdir(), 'PairDesk', 'drop') }) {
+  constructor({ target, windows, input, fallbackDir, log, stagingRoot = path.join(privateTempRoot(), 'drop') }) {
     Object.assign(this, { target, windows, input, fallbackDir, log, stagingRoot });
     this.drops = new Map(); // id → { sid, n, x, y, dir, paths, expires }
     this.tokens = new Map(); // file token → drop id
