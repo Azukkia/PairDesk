@@ -369,7 +369,9 @@ async function scenario(host, ctrl) {
         new ClipboardItem({ 'electron application/osclipboard;format="text/uri-list"': uri }),
       ]), pathToFileURL(copied).href);
     }
-    await sleep(1500); // announced to the partner
+    // Announced to the partner: the clipboard is polled every 0.7 s, then the
+    // files are listed (slower on a busy CI machine).
+    await sleep(3000);
     await viewer.focus('#stage');
     await viewer.keyboard.down('Control');
     await viewer.keyboard.press('KeyV');
