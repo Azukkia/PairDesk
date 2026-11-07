@@ -51,7 +51,7 @@ export class InputService extends EventEmitter {
           this.reason = msg.reason || null;
           this.log.info(`[input] helper ready (${this.available ? 'remote control available' : `unavailable: ${this.reason}`})`);
           // After a restart: restore the session and the host window link.
-          if (this.session) this.#post({ type: 'session', ...this.session });
+          if (this.session) this.#postSession();
           if (this.renderer && !this.renderer.webContents.isDestroyed()) this.attachRenderer(this.renderer.webContents, this.renderer.id);
           resolve();
           this.emit('ready');
@@ -107,6 +107,12 @@ export class InputService extends EventEmitter {
     }
   }
 
+  #postSession() {
+    const { swapKeys, ...session } = this.session;
+    this.#post({ type: 'session', ...session });
+    this.#post({ type: 'keys', id: session.id, swap: swapKeys });
+  }
+
   #onMessage(msg) {
     switch (msg?.type) {
       case 'log': {
@@ -135,7 +141,8 @@ export class InputService extends EventEmitter {
   /**
    * Incoming session state. `id` null ends it (the helper releases every
    * pressed key and button). `control`: input may be injected now.
-   * `rect`: physical bounds of the shared display; `scale`: its scale factor.
+   * `rect`: physical bounds of the shared display (points on macOS); `scale`:
+   * its scale factor. `swapKeys`: Ctrl and Cmd change places (shortcuts.js).
    */
   setSession(state) {
     if (!state?.id) {
@@ -144,8 +151,8 @@ export class InputService extends EventEmitter {
       this.#post({ type: 'session', id: null });
       return;
     }
-    this.session = { id: state.id, control: Boolean(state.control), rect: state.rect, scale: state.scale || 1 };
-    this.#post({ type: 'session', ...this.session });
+    this.session = { id: state.id, control: Boolean(state.control), rect: state.rect, scale: state.scale || 1, swapKeys: Boolean(state.swapKeys) };
+    this.#postSession();
   }
 
   /** Links the host window of session `id` to the helper with a new port. */

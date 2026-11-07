@@ -9,6 +9,7 @@ import { PROTOCOL_VERSION, isValidId } from '../shared/protocol.js';
 import { derivePrs } from './crypto/prs.js';
 import { ClipboardSync } from './clipboard.js';
 import { SignalingError } from './signaling/signaling.js';
+import { swapsCtrlCmd } from '../shared/shortcuts.js';
 
 export function physicalRect(display) {
   if (process.platform === 'win32') return screen.dipToScreenRect(null, display.bounds);
@@ -432,6 +433,7 @@ export class SessionManager extends EventEmitter {
       control: host.perms.control && this.settings.get('allowControl'),
       rect: this.#displayRect(host.displayId),
       scale: display.scaleFactor || 1,
+      swapKeys: swapsCtrlCmd(process.platform, host.peerPlatform),
     });
     if (host.ready && !host.inputLinked && host.win && !host.win.isDestroyed()) {
       host.inputLinked = true;

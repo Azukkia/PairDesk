@@ -7,6 +7,7 @@ import { ClipboardBridge } from '../common/clipboard-bridge.js';
 import { createRemoteCursor, createRemotePointer } from './remote-cursor.js';
 import { KEYMAP, KEY_COMBOS } from '../shared/keymap.js';
 import { formatId } from '../shared/protocol.js';
+import { MAC_KEY_COMBOS, heldNonModifiers, macTapKey, swapCtrlCmd, swapsCtrlCmd } from '../shared/shortcuts.js';
 
 const app = document.getElementById('app');
 let init = null;
@@ -444,10 +445,15 @@ function qualityMenu(anchor) {
 }
 
 function keysMenu(anchor) {
-  const combos = ['ctrlAltDel', 'ctrlShiftEsc', 'altTab', 'altF4', 'win', 'winR', 'winD', 'winE', 'winL', 'printScreen'];
+  // A Mac gets its own shortcuts. It swaps Ctrl and Cmd for a PC viewer
+  // (shortcuts.js): they are sent swapped, to arrive as they are.
+  const mac = init.peer.platform === 'darwin';
+  const table = mac ? MAC_KEY_COMBOS : KEY_COMBOS;
+  const combos = mac ? Object.keys(MAC_KEY_COMBOS) : ['ctrlAltDel', 'ctrlShiftEsc', 'altTab', 'altF4', 'win', 'winR', 'winD', 'winE', 'winL', 'printScreen'];
+  const hostSwaps = swapsCtrlCmd(init.peer.platform, window.pairdesk.platform);
   showMenu(anchor, [{ title: t('viewer.actions') }, ...combos.map((name) => ({
     label: t(`keys.${name}`),
-    onClick: () => sendCombo(KEY_COMBOS[name]),
+    onClick: () => sendCombo(hostSwaps ? table[name].map(swapCtrlCmd) : table[name]),
   }))]);
 }
 
@@ -593,12 +599,12 @@ function mapPoint(e, clamp = false) {
 
 // Ctrl+V (or Shift+Insert) held while copied files travel to the remote clipboard.
 let heldPaste = null;
-function holdPaste(e) {
+function holdPaste(e, released = false) {
   const mods = [];
-  if (e.ctrlKey) mods.push('ControlLeft');
-  if (e.metaKey) mods.push('MetaLeft');
+  if (e.ctrlKey) mods.push(remoteKey('ControlLeft'));
+  if (e.metaKey) mods.push(remoteKey('MetaLeft'));
   if (e.shiftKey) mods.push('ShiftLeft');
-  heldPaste = { code: e.code, released: false };
+  heldPaste = { code: e.code, released };
   const out = clip.undelivered;
   toast(t('viewer.clipSending', { size: formatBytes(out.total || 0) }), { type: 'info' });
   clip.push(out.cid).then((ok) => {
@@ -620,6 +626,10 @@ function releaseAll() {
   pressedKeys.clear();
   pressedButtons.clear();
 }
+
+// A Mac controlling a PC: Ctrl and Cmd change places (shortcuts.js).
+const macViewer = window.pairdesk.platform === 'darwin';
+const remoteKey = (code) => (swapsCtrlCmd(window.pairdesk.platform, init?.peer?.platform) ? swapCtrlCmd(code) : code);
 
 function isTypingTarget(target) {
   return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
@@ -706,20 +716,35 @@ function attachInput() {
     if (!KEYMAP[e.code]) return;
     e.preventDefault();
     e.stopPropagation();
-    if (down) pressedKeys.add(e.code);
-    else if (!pressedKeys.delete(e.code)) return;
+    const code = remoteKey(e.code);
+    // Keys whose release a Mac does not report are sent as a whole press.
+    const tap = macViewer && macTapKey(e.code, down, e.metaKey);
+    const events = [];
+    if (tap) {
+      events.push(['k', code, 1], ['k', code, 0]);
+    } else {
+      if (down) pressedKeys.add(code);
+      else if (!pressedKeys.delete(code)) return;
+      events.push(['k', code, down ? 1 : 0]);
+      if (macViewer && !down && (e.code === 'MetaLeft' || e.code === 'MetaRight')) {
+        for (const held of heldNonModifiers(pressedKeys)) {
+          pressedKeys.delete(held);
+          events.unshift(['k', held, 0]);
+        }
+      }
+    }
     // Pasting files copied here: the keystroke waits until they are in the
     // remote clipboard.
     const paste = (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) || (e.code === 'Insert' && e.shiftKey);
     if (down && paste && !heldPaste && clip.undelivered) {
-      holdPaste(e);
+      holdPaste(e, tap);
       return;
     }
     if (heldPaste?.code === e.code) {
       if (!down) heldPaste.released = true;
       return;
     }
-    sendReliable([['k', e.code, down ? 1 : 0]]);
+    sendReliable(events);
   };
   window.addEventListener('keydown', onKey(true), true);
   window.addEventListener('keyup', onKey(false), true);

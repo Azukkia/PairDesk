@@ -11,6 +11,7 @@
 // path waits for the main process.
 
 import { PointerSequencer } from '../input/pointer-seq.js';
+import { swapCtrlCmd } from '../../shared/shortcuts.js';
 
 const clamp01 = (v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
 const clampWheel = (v) => (Number.isFinite(v) ? Math.max(-2400, Math.min(2400, v)) : 0);
@@ -123,7 +124,7 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
           injector.wheel(clampWheel(ev[1]), clampWheel(ev[2]));
           break;
         case 'k':
-          if (typeof ev[1] === 'string' && ev[1].length < 32) injector.key(ev[1], Boolean(ev[2]));
+          if (typeof ev[1] === 'string' && ev[1].length < 32) injector.key(session.swapKeys ? swapCtrlCmd(ev[1]) : ev[1], Boolean(ev[2]));
           break;
         case 't':
           if (typeof ev[1] === 'string' && ev[1]) injector.typeText?.(ev[1].slice(0, 256));
@@ -270,6 +271,10 @@ export function createInputCore({ injector, createTracker = null, guard = null, 
           return;
         case 'release':
           injector.releaseAll();
+          return;
+        case 'keys':
+          // A Mac controlled from a PC: Ctrl and Cmd change places (shortcuts.js).
+          if (session && msg.id === session.id) session.swapKeys = Boolean(msg.swap);
           return;
         case 'query': {
           let value = null;
