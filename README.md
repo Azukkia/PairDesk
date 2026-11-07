@@ -11,7 +11,7 @@
 | **Windows 10/11** | **[Télécharger PairDesk-Setup.exe](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe)** |
 | Linux (AppImage) | [PairDesk-x86_64.AppImage](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-x86_64.AppImage) |
 | Linux (Debian/Ubuntu) | [PairDesk-amd64.deb](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-amd64.deb) |
-| **Android 8+** (téléphone, tablette) | *Bientôt (version 1.2.1)* : [PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk), ou le code QR qui apparaîtra alors sur l'accueil de PairDesk pour PC |
+| **Android 8+** (téléphone, tablette) | **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** (à partir de la version 1.3.0), ou le code QR affiché sur l'accueil de PairDesk pour PC |
 
 Ces liens sont permanents : ils pointent toujours vers la dernière version publiée. Toutes les versions restent disponibles sur la page [Releases](https://github.com/Azukkia/PairDesk/releases).
 
@@ -49,14 +49,14 @@ Les connexions récentes apparaissent sur l'accueil et dans **Récents** ; coche
 
 ## Sur votre téléphone Android
 
-> L'application Android arrive avec la version 1.2.1. PairDesk pour PC 1.2.0 est déjà prêt à l'accueillir (sessions caméra, webcam « PairDesk Camera », téléphones contrôlés).
+> Disponible à partir de la version 1.3.0. L'application n'a pas encore été testée sur tous les modèles de téléphones : signalez-nous tout souci.
 
 1. Sur le téléphone, ouvrez **[PairDesk.apk](https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk)** (ou scannez le code QR de l'accueil de PairDesk sur le PC), puis ouvrez le fichier téléchargé. Android demande d'autoriser l'installation depuis le navigateur : acceptez (l'application n'est pas sur le Play Store).
 2. L'application a, elle aussi, un **ID** et un **mot de passe**.
 
 - **Contrôler le PC depuis le téléphone** : saisissez l'ID du PC et son mot de passe. Le doigt déplace la souris (mode pavé tactile ou toucher direct), le clavier du téléphone tape sur le PC, une barre de touches donne Échap, Tab, Ctrl, Alt, Windows, les flèches et les combinaisons.
-- **Afficher le téléphone sur le PC** : sur le PC, connectez-vous à l'ID du téléphone. Le téléphone demande l'autorisation de partager son écran. Pour le **piloter** depuis le PC (souris, texte, boutons Retour / Accueil / Applications récentes de la barre d'outils), activez une fois le service d'accessibilité « PairDesk » proposé par l'application.
-- **Caméra du téléphone comme webcam** : dans l'application, touchez **Caméra**, choisissez le PC (ID + mot de passe). Sur le PC, une fenêtre montre l'image ; sous Windows, la webcam **« PairDesk Camera »** apparaît dans Teams, Zoom, Discord, OBS, Chrome/Edge… (choisissez-la dans leurs réglages vidéo). Le bouton « Changer de caméra » passe de la caméra arrière à l'avant. La webcam est installée pour votre compte Windows seulement, sans droits administrateur, et retirée à la désinstallation de PairDesk.
+- **Afficher le téléphone sur le PC** : sur le PC, connectez-vous à l'ID du téléphone. Le téléphone demande l'autorisation de partager son écran. Pour le **piloter** depuis le PC (souris, texte, boutons Retour / Accueil / Applications récentes de la barre d'outils), activez une fois le service d'accessibilité « PairDesk » proposé par l'application (sur Android 13 et plus, autorisez d'abord les « paramètres restreints » : Paramètres → Applications → PairDesk → ⋮ → Autoriser les paramètres restreints, car l'application ne vient pas du Play Store).
+- **Caméra du téléphone comme webcam** : dans l'application, touchez **Utiliser comme webcam du PC**, choisissez le PC (ID + mot de passe). Sur le PC, une fenêtre montre l'image ; sous Windows, la webcam **« PairDesk Camera »** apparaît dans Teams, Zoom, Discord, OBS, Chrome/Edge… (choisissez-la dans leurs réglages vidéo). Le bouton « Changer de caméra » passe de la caméra arrière à l'avant. La webcam est installée pour votre compte Windows seulement, sans droits administrateur, et retirée à la désinstallation de PairDesk.
 
 ## Mises à jour automatiques
 
