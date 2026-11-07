@@ -1,6 +1,7 @@
 # Packaging configuration (https://www.electron.build).
 #   npm run dist:win    → dist/PairDesk-Setup-<version>.exe (NSIS installer)
 #   npm run dist:linux  → AppImage + .deb
+#   npm run dist:mac    → dist/PairDesk-<version>-mac.dmg + .zip (universal: Intel + Apple silicon, on a Mac)
 appId: com.azukkia.pairdesk
 productName: PairDesk
 copyright: Copyright © 2026 Azukkia
@@ -18,7 +19,9 @@ files:
   - "!**/node_modules/**/{README,readme,CHANGELOG,changelog,HISTORY}*"
   - "!**/node_modules/**/{test,tests,__tests__,example,examples,docs,doc,benchmarks}/**"
 
-# koffi ships prebuilt Node-API binaries: nothing to compile.
+# koffi ships prebuilt Node-API binaries: nothing to compile. Each platform
+# has its own package (@koromix/koffi-<os>-<arch>); a universal Mac build
+# needs both Mac ones (scripts/koffi-mac.mjs, run by npm run dist:mac).
 npmRebuild: false
 asarUnpack:
   - node_modules/koffi/**
@@ -59,6 +62,33 @@ win:
       filter:
         - PairDeskCapture.dll
   artifactName: PairDesk-Setup-${version}.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: universal
+    - target: zip
+      arch: universal
+  category: public.app-category.utilities
+  icon: build/icon.icns
+  # No Apple Developer ID certificate: an ad-hoc signature, which Apple silicon
+  # requires to run anything, and no notarization (first launch: right-click →
+  # Open). The hardened runtime would refuse koffi's library with an ad-hoc
+  # signature (library validation), and only matters for notarization.
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+  # koffi's binaries are already one per architecture, identical in the x64
+  # and arm64 builds: kept as they are in the universal app.
+  x64ArchFiles: "**/node_modules/@koromix/koffi-darwin-*/**"
+  extendInfo:
+    # A regular app with a Dock icon (the menu bar icon comes in addition).
+    LSUIElement: false
+  artifactName: PairDesk-${version}-mac.${ext}
+
+dmg:
+  title: PairDesk ${version}
 
 nsis:
   oneClick: false
