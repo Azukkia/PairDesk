@@ -463,6 +463,8 @@ export class SessionManager extends EventEmitter {
     const host = this.host;
     if (!host || host.state !== 'active' || !host.perms.control || !host.perms.files) return null;
     if (!this.settings.get('allowControl') || !this.settings.get('allowFileTransfer')) return null;
+    // macOS: no drop replay yet, the files go to Downloads/PairDesk.
+    if (process.platform === 'darwin') return null;
     const display = screen.getAllDisplays().find((d) => String(d.id) === String(host.displayId)) || screen.getPrimaryDisplay();
     const scale = display.scaleFactor || 1;
     return {
