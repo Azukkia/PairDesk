@@ -264,8 +264,17 @@ async function scenario(host, ctrl) {
       return win.getBounds();
     });
     process.stderr.write(`host panel dragged from ${JSON.stringify(before)} to ${JSON.stringify(after)}\n`);
-    // The remote mouse still works afterwards.
-    const target3 = { x: Math.round((before.x - 150) * screenInfo.scale), y: Math.round((before.y - 120) * screenInfo.scale) };
+    // The remote mouse still works afterwards. The target is left of the
+    // panel and below the viewer window: both instances share one screen, and
+    // the real cursor over the viewer would make it send moves of its own.
+    const viewerBox = await ctrl.app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('/viewer/'));
+      return win.getBounds();
+    });
+    const target3 = {
+      x: Math.round((Math.min(before.x, after.x) - 150) * screenInfo.scale),
+      y: Math.round(Math.max(before.y + 60, viewerBox.y + viewerBox.height + 20) * screenInfo.scale),
+    };
     const p3 = await viewerPointFor(viewer, target3, screenInfo);
     await viewer.mouse.move(p3.x, p3.y, { steps: 5 });
     await poll(async () => {
