@@ -206,6 +206,12 @@ class HostSession internal constructor(
 
     private fun startCapture(): Boolean {
         if (core.isEnded) return false
+        // The phone may have turned while the system asked for the capture.
+        val size = screenSize(context)
+        if (core.onScreenSize(size.x, size.y)) {
+            inputHandler.post { input.setScreenSize(size.x, size.y) }
+            captureSize = CaptureSize.forScreen(size.x, size.y)
+        }
         val env = graph.rtc.environment
         val (cw, ch) = captureSize
         val videoTrack: VideoTrack
