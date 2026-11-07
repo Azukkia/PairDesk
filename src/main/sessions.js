@@ -568,6 +568,7 @@ export class SessionManager extends EventEmitter {
     this.#setClipboard(host, false);
     this.clipTransfers.endSession(host);
     this.files.abortAll(host.sid);
+    this.emit('host-ended', host.sid); // unfinished drops (drops.js)
     if (host.win && !host.win.isDestroyed()) host.win.destroy();
     if (host.state === 'active') {
       this.notify(this.t('notify.endedTitle'), this.t('notify.endedBody', { name: host.peerName }));

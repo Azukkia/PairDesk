@@ -200,6 +200,7 @@ async function main() {
   });
   drops.cleanup();
   sessions.permissions = permissions;
+  sessions.on('host-ended', (sid) => drops.endSession(sid));
 
   const updater = new Updater({
     log, isPackaged: app.isPackaged, currentVersion: app.getVersion(), fetch: (url, opts) => net.fetch(url, opts), openExternal: (url) => shell.openExternal(url),

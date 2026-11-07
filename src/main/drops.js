@@ -11,7 +11,10 @@
 // receives the files exactly as if somebody had dropped them on site, and
 // places them itself (icon position on the desktop, current folder...).
 //
-// If the drag cannot start, the files are moved to Downloads/PairDesk.
+// If the drag cannot start, or the session ends before all the files of a
+// drop arrived, the files are moved to Downloads/PairDesk. Dropped files stay
+// in the staging folder (the target may have opened them there); a day
+// later, those changed since the drop are moved to Downloads too.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +23,7 @@ import { privateTempRoot } from './files.js';
 
 const MAX_FILES = 100;
 const EXPIRES_MS = 15 * 60_000;
+const DELIVERED = '.pairdesk-dropped'; // in a staging folder: when its files were dropped
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
 /** Validates the `drop` field of a file offer: {id, x, y, n}. */
@@ -57,16 +61,52 @@ export class DropManager {
     this.queue = Promise.resolve();
   }
 
-  /** Removes staging folders left by previous runs (Explorer may still copy right after a drop). */
+  /**
+   * Removes staging folders left by previous runs (not right away: Explorer
+   * may still copy right after a drop). Files changed after they were
+   * dropped (opened there by the target), or never dropped, go to Downloads.
+   */
   cleanup(maxAgeMs = 24 * 3600_000) {
+    let names = [];
     try {
-      for (const name of fs.readdirSync(this.stagingRoot)) {
-        const dir = path.join(this.stagingRoot, name);
-        if (Date.now() - fs.statSync(dir).mtimeMs > maxAgeMs) fs.rmSync(dir, { recursive: true, force: true });
-      }
+      names = fs.readdirSync(this.stagingRoot);
     } catch {
-      /* nothing to clean */
+      return; // nothing to clean
     }
+    for (const name of names) {
+      const dir = path.join(this.stagingRoot, name);
+      try {
+        if (Date.now() - fs.statSync(dir).mtimeMs <= maxAgeMs) continue;
+        let dropped = null;
+        try {
+          dropped = fs.statSync(path.join(dir, DELIVERED)).mtimeMs;
+        } catch {
+          /* never dropped */
+        }
+        const keep = [];
+        for (const n of fs.readdirSync(dir)) {
+          if (n === DELIVERED || n.endsWith('.pdpart')) continue;
+          const file = path.join(dir, n);
+          const st = fs.statSync(file);
+          if (st.isFile() && (dropped == null || st.mtimeMs > dropped)) keep.push(file);
+        }
+        if (keep.length && !this.#fallback(keep, dropped == null ? 'never dropped' : 'changed after the drop')) continue;
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch (err) {
+        this.log.warn(`[drop] cleanup of ${name}: ${err.message}`);
+      }
+    }
+  }
+
+  /** The session ended: the files of its unfinished drops go to Downloads. */
+  endSession(sid) {
+    for (const [id, entry] of this.drops) if (entry.sid === sid) this.#abandon(id, entry, 'session ended');
+  }
+
+  #abandon(id, entry, why) {
+    this.drops.delete(id);
+    for (const [token, dropId] of this.tokens) if (dropId === id) this.tokens.delete(token);
+    if (entry.paths.length) this.#fallback(entry.paths, why);
   }
 
   /**
@@ -78,7 +118,7 @@ export class DropManager {
     const target = this.target();
     if (!drop || !target || target.sid !== sid) return null;
     const now = Date.now();
-    for (const [id, d] of this.drops) if (d.expires < now) this.drops.delete(id);
+    for (const [id, d] of this.drops) if (d.expires < now) this.#abandon(id, d, 'incomplete drop');
     let entry = this.drops.get(drop.id);
     if (entry && entry.sid !== sid) return null;
     if (!entry) {
@@ -120,7 +160,15 @@ export class DropManager {
         this.log.warn(`[drop] drag failed: ${err.message}`);
       }
     }
-    if (!ok) this.#fallback(entry.paths);
+    if (!ok) {
+      this.#fallback(entry.paths, 'could not drop them');
+      return;
+    }
+    try {
+      fs.writeFileSync(path.join(entry.dir, DELIVERED), ''); // see cleanup()
+    } catch (err) {
+      this.log.warn(`[drop] ${err.message}`);
+    }
   }
 
   async #drag(entry, target) {
@@ -162,9 +210,16 @@ export class DropManager {
     webContents.startDrag({ file: cur.files[0], files: cur.files, icon });
   }
 
-  #fallback(paths) {
+  /** Moves files to Downloads/PairDesk; false if some could not be moved. */
+  #fallback(paths, why) {
     const dir = this.fallbackDir();
-    fs.mkdirSync(dir, { recursive: true });
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (err) {
+      this.log.warn(`[drop] ${err.message}`);
+      return false;
+    }
+    let moved = 0;
     for (const file of paths) {
       try {
         const ext = path.extname(file);
@@ -178,10 +233,12 @@ export class DropManager {
           fs.copyFileSync(file, dest);
           fs.rmSync(file, { force: true });
         }
+        moved++;
       } catch (err) {
         this.log.warn(`[drop] could not move ${path.basename(file)}: ${err.message}`);
       }
     }
-    this.log.info(`[drop] ${paths.length} file(s) saved in ${dir} instead`);
+    this.log.info(`[drop] ${moved} file(s) saved in ${dir} (${why})`);
+    return moved === paths.length;
   }
 }
