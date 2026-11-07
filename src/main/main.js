@@ -200,7 +200,9 @@ async function main() {
   drops.cleanup();
   sessions.permissions = permissions;
 
-  const updater = new Updater({ log, isPackaged: app.isPackaged, currentVersion: app.getVersion() });
+  const updater = new Updater({
+    log, isPackaged: app.isPackaged, currentVersion: app.getVersion(), fetch: (url, opts) => net.fetch(url, opts), openExternal: (url) => shell.openExternal(url),
+  });
 
   // ───────────── state pushed to the main window ─────────────
 

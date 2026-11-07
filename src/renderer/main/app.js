@@ -116,7 +116,7 @@ function updateBanner(compact) {
   let progress = null;
   if (u.status === 'available') {
     text = t('update.available', { version: u.version });
-    actions.push(h('button', { class: 'btn solid', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t('update.download')));
+    actions.push(h('button', { class: 'btn solid', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t(u.manual ? 'update.downloadMac' : 'update.download')));
   } else if (u.status === 'downloading') {
     text = t('update.downloading', { progress: u.progress });
     progress = h('div', { class: 'progress' }, h('div', { style: { width: `${u.progress}%` } }));
@@ -632,7 +632,9 @@ function AboutPage() {
         case 'up-to-date': text = t('update.upToDate'); break;
         case 'available':
           text = t('update.available', { version: u.version });
-          action = h('button', { class: 'btn primary', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t('update.download'));
+          // macOS: the new version is downloaded in the browser and installed by hand.
+          if (u.manual) text = h('div', null, text, h('div', { class: 'small muted' }, t('update.manualHint')));
+          action = h('button', { class: 'btn primary', onclick: () => api.invoke('update:download') }, icon('download', 'sm'), t(u.manual ? 'update.downloadMac' : 'update.download'));
           break;
         case 'downloading': text = t('update.downloading', { progress: u.progress }); busy = true; break;
         case 'downloaded':
