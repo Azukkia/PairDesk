@@ -198,6 +198,7 @@ function startSession() {
   lastMove = null;
   remoteCursor.reset();
   remotePointer.reset();
+  clip.reset(); // what either side announced belongs to the previous connection
   rtc = new RtcSession({ role: 'viewer', iceServers: init.iceServers });
   rtc.acceptFile = async ({ name, size, clip: clipInfo }) => {
     const res = await api.invoke('files:begin', { name, size, clip: clipInfo });
@@ -277,6 +278,7 @@ function showEnded(reason) {
   if (st.ended) return;
   st.ended = reason;
   st.connected = false;
+  heldPaste = null;
   releaseAll();
   clearTimeout(timers.connect);
   clearTimeout(timers.fail);
@@ -606,14 +608,21 @@ function holdPaste(e, released = false) {
   if (e.ctrlKey) mods.push(remoteKey('ControlLeft'));
   if (e.metaKey) mods.push(remoteKey('MetaLeft'));
   if (e.shiftKey) mods.push('ShiftLeft');
-  heldPaste = { code: e.code, released };
+  const held = { code: e.code, released };
+  heldPaste = held;
   const out = clip.undelivered;
+  // Never held for ever: given up (no paste) when the files take far longer
+  // than they should (1 minute + 1 s per MB).
+  const timer = setTimeout(() => {
+    if (heldPaste === held) heldPaste = null;
+  }, 60_000 + (out.total || 0) / 1000);
   toast(t('viewer.clipSending', { size: formatBytes(out.total || 0) }), { type: 'info' });
   clip.push(out.cid).then((ok) => {
-    const held = heldPaste;
+    clearTimeout(timer);
+    if (heldPaste !== held) return; // given up, or the session ended
     heldPaste = null;
     if (!ok) toast(t('viewer.clipFailed'), { type: 'error' });
-    if (!ok || !held || !canControl()) return;
+    if (!ok || !canControl()) return;
     // The modifiers may have been released meanwhile: send the whole shortcut.
     const missing = mods.filter((m) => ![...pressedKeys].some((k) => k.startsWith(m.replace('Left', ''))));
     const events = [...missing.map((m) => ['k', m, 1]), ['k', held.code, 1]];
@@ -835,6 +844,7 @@ function attachToolbarAutoHide() {
 api.on('session:ended', ({ reason }) => showEnded(reason));
 api.on('clipboard:local', (payload) => {
   if (st.connected) clip.local(payload);
+  else clip.localChanged();
 });
 api.on('clipboard:ready', () => toast(t('viewer.clipFilesReady'), { type: 'success' }));
 

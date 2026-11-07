@@ -230,9 +230,13 @@ Both ways:
   `{type:'clipboard', text}`. 1.2+ peers send
   `{type:'clipboard', cid, text?, html?, rtf?, image?:{size}, files?:[{name, size, dir}], total?}`
   whenever their clipboard changes (`cid`: random id of that content, ≤ 32
-  chars; `text`/`html`/`rtf` ≤ 200 KiB each and 240 KiB together; `files`
-  lists the copied top-level files and folders, `size` null for a folder,
-  `total` bytes in all). A 1.2 receiver writes text/HTML/RTF to its clipboard
+  chars; `text`/`html`/`rtf` ≤ 200 KiB each and 240 KiB together, measured
+  JSON-escaped as they are sent; `files` lists the copied top-level files
+  and folders, `size` null for a folder, `total` bytes in all). When the
+  control channel opens, the controller also sends its current clipboard;
+  1.3+ hosts do not (the controller's clipboard must not be replaced by the
+  host's, maybe much older, content). A 1.3+ sender whose message is still
+  too big sends `text` alone. A 1.2+ receiver writes text/HTML/RTF to its clipboard
   right away. An image follows at once as a file transfer whose offer carries
   `clip:{cid, kind:'image', n:1}`. Copied files are only announced; their
   content travels on demand:

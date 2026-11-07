@@ -391,7 +391,8 @@ async function startHosting() {
     sendInfo();
     window.pairdesk.inputPort.send({ type: 'cursor-resync' });
     if (inputBlocked) rtc.sendControl({ type: 'input-blocked', reason: inputBlocked });
-    clip.sendCurrent();
+    // The clipboard is not sent now: only the viewer's goes over at the
+    // start (the host announces later changes).
   });
   rtc.addEventListener('control', ({ detail: msg }) => onControl(msg));
   rtc.addEventListener('state', ({ detail: state }) => onConnectionState(state));
@@ -506,6 +507,7 @@ api.on('session:state', ({ state, perms: p }) => {
 });
 api.on('clipboard:local', (payload) => {
   if (rtc?.pc.connectionState === 'connected') clip.local(payload);
+  else clip.localChanged();
 });
 // From the input helper: shape of the local mouse cursor (drawn by the viewer
 // with zero delay), and whether Windows currently blocks injected input.

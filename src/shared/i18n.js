@@ -277,6 +277,9 @@ const fr = {
   'viewer.clipFailed': "Les fichiers copiés n'ont pas pu être envoyés à l'ordinateur distant.",
   'viewer.clipBigFiles': "Des fichiers ({size}) sont copiés sur l'ordinateur distant.",
   'viewer.clipFetch': 'Les récupérer ici',
+  'clipboard.tooManyFiles': 'Trop de fichiers copiés (ou dossiers trop imbriqués) : seule une partie pourra être envoyée au partenaire.',
+  'clipboard.imageTooBig': "L'image copiée dépasse 16 Mo : elle ne sera pas envoyée au partenaire.",
+  'clipboard.textTooLong': 'Le texte copié dépasse 200 Ko : il ne sera pas envoyé au partenaire.',
   'viewer.delay': 'Délai ≈ {ms} ms',
   'viewer.delayHelp': "Délai estimé entre l'écran du partenaire et le vôtre (réseau + encodage + décodage).",
 
@@ -630,6 +633,9 @@ const en = {
   'viewer.clipFailed': 'The copied files could not be sent to the remote computer.',
   'viewer.clipBigFiles': 'Files ({size}) are copied on the remote computer.',
   'viewer.clipFetch': 'Get them here',
+  'clipboard.tooManyFiles': 'Too many files copied (or folders nested too deeply): only part of them can be sent to your partner.',
+  'clipboard.imageTooBig': 'The copied image is larger than 16 MB: it will not be sent to your partner.',
+  'clipboard.textTooLong': 'The copied text is larger than 200 KB: it will not be sent to your partner.',
   'viewer.delay': 'Delay ≈ {ms} ms',
   'viewer.delayHelp': "Estimated delay between your partner's screen and yours (network + encoding + decoding).",
 
