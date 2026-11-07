@@ -77,7 +77,8 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
   function poll() {
     let cur;
     try {
-      cur = probe.read({ image: 'unknown' });
+      // Without the bitmap first: it is only needed when the shape changed.
+      cur = probe.read({ image: 'never' });
     } catch {
       return;
     }
@@ -90,6 +91,13 @@ export async function createCursorTracker({ log, encodePng, scale = () => 1, int
     const raw = `${cur.serial ?? cur.handle}|${cur.shape}|${cur.hidden ?? ''}`;
     if (raw === lastRaw) return;
     lastRaw = raw;
+    if (!cur.shape && !cur.bgra) {
+      try {
+        cur = probe.read({ image: 'unknown' }) || cur;
+      } catch {
+        /* keep the shape-less reading */
+      }
+    }
     const { key, msg } = message(cur);
     if (key === lastKey) return;
     lastKey = key;
