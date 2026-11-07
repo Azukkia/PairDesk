@@ -16,9 +16,9 @@ const log = (level, msg) => parent.postMessage({ type: 'log', level, msg: String
 process.on('uncaughtException', (err) => log('error', `[capture-helper] ${err.stack || err.message}`));
 process.on('unhandledRejection', (err) => log('error', `[capture-helper] ${err?.stack || err}`));
 
-// Two pictures on their way at most: when the window (encoder) is behind,
+// One picture on its way at most: when the window (encoder) is behind,
 // pictures are skipped rather than queued, so the delay never builds up.
-const MAX_IN_FLIGHT = 2;
+const MAX_IN_FLIGHT = 1;
 
 async function openBackend(rect, options) {
   if (process.platform === 'win32') return (await import('../capture/capture-win32.js')).openWin32Capture(rect, options);

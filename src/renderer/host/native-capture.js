@@ -1,11 +1,18 @@
 // Host window side of the screen capture without the mouse cursor
 // (src/main/capture/native-capture.js): the capture helper sends raw
-// pictures through a MessagePort, turned here into a video track.
+// pictures through a MessagePort; a worker (capture-worker.js) turns them
+// into the frames of a video track.
 
 const ports = new Map(); // token → port that arrived before it was awaited
 const portWaiters = new Map();
+const endListeners = new Map(); // token → called when the helper went away
 window.addEventListener('message', (e) => {
-  if (e.source !== window || e.data?.type !== 'pairdesk:capture-port' || !e.ports[0]) return;
+  if (e.source !== window) return;
+  if (e.data?.type === 'pairdesk:capture-ended') {
+    endListeners.get(e.data.token)?.();
+    return;
+  }
+  if (e.data?.type !== 'pairdesk:capture-port' || !e.ports[0]) return;
   const waiter = portWaiters.get(e.data.token);
   if (waiter) waiter(e.ports[0]);
   else ports.set(e.data.token, e.ports[0]);
@@ -30,14 +37,6 @@ function waitPort(token, ms) {
   });
 }
 
-// Only changes are sent. After one, the last picture is given again to the
-// encoder a few times so that it can refine it (screen content is first sent
-// at a lower quality), then once a second.
-const REFINE_DELAYS = [80, 100, 150, 200, 300, 400];
-const IDLE_DELAY = 1000;
-
-const now = () => Math.round(performance.now() * 1000); // µs
-
 /**
  * Starts the native capture of `displayId`. Resolves { track, width, height }
  * once the first picture arrived; rejects when the native capture is not
@@ -50,90 +49,44 @@ export async function startNativeCapture(api, { displayId, fps, onFailure }) {
   if (!res?.ok) throw new Error(res?.reason || 'unavailable');
   const port = await waitPort(res.token, 3000);
   const generator = new MediaStreamTrackGenerator({ kind: 'video' });
-  const writer = generator.writable.getWriter();
-  let last = null; // the last picture, given again for refinement
-  let repeats = 0;
-  let repeatTimer = null;
-  let stopped = false;
-  let started = false;
-  let resolveFirst;
-  let rejectFirst;
+  const worker = new Worker(new URL('./capture-worker.js', import.meta.url));
+  let state = 'starting'; // 'running', 'stopped'
+  let firstDone;
   const first = new Promise((resolve, reject) => {
-    resolveFirst = resolve;
-    rejectFirst = reject;
+    firstDone = (err) => (err ? reject(err) : resolve());
   });
 
-  // The generator closes each frame once it has been handed on.
-  const write = (frame) => writer.write(frame).catch(() => frame.close());
-
-  const scheduleRepeat = () => {
-    clearTimeout(repeatTimer);
-    const delay = repeats < REFINE_DELAYS.length ? REFINE_DELAYS[repeats] : IDLE_DELAY;
-    repeatTimer = setTimeout(() => {
-      if (stopped || !last) return;
-      repeats++;
-      write(new VideoFrame(last, { timestamp: now() }));
-      scheduleRepeat();
-    }, delay);
-  };
-
   const cleanup = () => {
-    if (stopped) return;
-    stopped = true;
-    clearTimeout(repeatTimer);
-    last?.close();
-    last = null;
-    try {
-      port.postMessage({ type: 'stop' });
-      port.close();
-    } catch {
-      /* already closed */
-    }
-    writer.close().catch(() => {});
+    if (state === 'stopped') return;
+    state = 'stopped';
+    endListeners.delete(res.token);
+    worker.postMessage({ type: 'stop' });
+    // Time to close the port and the stream, then the worker goes.
+    setTimeout(() => worker.terminate(), 500);
   };
-
-  port.onmessage = (e) => {
-    const msg = e.data;
-    if (stopped) return;
-    if (msg?.type === 'frame') {
-      let frame;
-      try {
-        frame = new VideoFrame(msg.data, {
-          format: msg.format === 'BGRA' ? 'BGRA' : 'BGRX',
-          codedWidth: msg.width,
-          codedHeight: msg.height,
-          timestamp: now(),
-          layout: [{ offset: 0, stride: msg.stride || msg.width * 4 }],
-        });
-      } catch (err) {
-        console.warn('[capture] bad picture', err.message);
-        return;
-      } finally {
-        // The picture was copied: the helper may send the next one.
-        port.postMessage({ type: 'ack' });
-      }
-      last?.close();
-      last = frame.clone();
-      repeats = 0;
-      write(frame);
-      scheduleRepeat();
-      if (!started) {
-        started = true;
-        resolveFirst();
-      }
-    } else if (msg?.type === 'error') {
-      cleanup();
-      if (started) onFailure?.(new Error(msg.message));
-      else rejectFirst(new Error(msg.message));
+  const failed = (err) => {
+    const wasRunning = state === 'running';
+    cleanup();
+    if (wasRunning) onFailure?.(err);
+    else firstDone(err);
+  };
+  worker.onmessage = (e) => {
+    if (e.data?.type === 'started' && state === 'starting') {
+      state = 'running';
+      firstDone();
+    } else if (e.data?.type === 'error') {
+      failed(new Error(e.data.message));
     }
   };
-  port.start();
+  worker.onerror = (e) => failed(new Error(e.message || 'capture worker failed'));
+  // The capture helper process went away (crash): no 'error' comes from it.
+  endListeners.set(res.token, () => failed(new Error('capture helper exited')));
+  worker.postMessage({ type: 'start', port, writable: generator.writable }, [port, generator.writable]);
 
-  const timer = setTimeout(() => rejectFirst(new Error('no picture')), 4000);
+  const timer = setTimeout(() => failed(new Error('no picture')), 4000);
   try {
     await first;
   } catch (err) {
-    cleanup();
     generator.stop();
     throw err;
   } finally {
@@ -148,7 +101,7 @@ export async function startNativeCapture(api, { displayId, fps, onFailure }) {
   };
   track.pairdeskNative = true; // no cursor in this picture
   track.pairdeskSetFps = (value) => {
-    if (!stopped) port.postMessage({ type: 'fps', fps: value });
+    if (state === 'running') worker.postMessage({ type: 'fps', fps: value });
   };
   return { track, width: res.width, height: res.height };
 }

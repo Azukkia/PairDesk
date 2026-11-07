@@ -58,7 +58,7 @@ export function normalizePassword(password) {
 // with 'detail' content the host lowers it further on slow links.
 export const QUALITY_PRESETS = {
   speed: { maxBitrate: 2_500_000, maxFramerate: 60, scale: [1.5, 2], contentHint: 'motion', degradation: 'maintain-framerate' },
-  balanced: { maxBitrate: 5_000_000, maxFramerate: 30, scale: [1, 1.5], contentHint: 'detail', degradation: 'balanced' },
+  balanced: { maxBitrate: 8_000_000, maxFramerate: 60, scale: [1, 1.5], contentHint: 'detail', degradation: 'balanced' },
   quality: { maxBitrate: 15_000_000, maxFramerate: 30, scale: [1, 1], contentHint: 'detail', degradation: 'maintain-resolution' },
 };
 

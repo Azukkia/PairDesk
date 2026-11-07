@@ -28,6 +28,8 @@ export class NativeCapture {
     this.waiters = new Map();
     this.nextId = 1;
     this.statsWaiter = null;
+    this.active = null; // { id, webContents } of the capture running
+
   }
 
   /** Whether this computer can try the native capture (it may still fail and fall back). */
@@ -67,6 +69,11 @@ export class NativeCapture {
         for (const w of this.waiters.values()) w({ ok: false, error: `helper exited (${code})` });
         this.waiters.clear();
         if (code) this.log.warn(`[capture] helper exited (${code})`);
+        // The host window gets no error from a dead helper: tell it (it goes
+        // back to Chromium's capture).
+        const active = this.active;
+        this.active = null;
+        if (active && !active.webContents.isDestroyed()) active.webContents.send('capture:ended', { token: active.id });
       });
     });
     return this.ready;
@@ -104,6 +111,7 @@ export class NativeCapture {
       return { ok: false, reason: res.error || 'closed' };
     }
     webContents.postMessage('capture:port', { token: id }, [port2]);
+    this.active = { id, webContents };
     return { ok: true, token: id, width: res.width, height: res.height };
   }
 

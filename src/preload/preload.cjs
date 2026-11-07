@@ -59,6 +59,9 @@ ipcRenderer.on('camera:port', (event, format) => {
 ipcRenderer.on('capture:port', (event, info) => {
   if (event.ports[0]) window.postMessage({ type: 'pairdesk:capture-port', token: info?.token }, '*', [event.ports[0]]);
 });
+ipcRenderer.on('capture:ended', (_event, info) => {
+  window.postMessage({ type: 'pairdesk:capture-ended', token: info?.token }, '*');
+});
 
 contextBridge.exposeInMainWorld('pairdesk', {
   platform: process.platform,

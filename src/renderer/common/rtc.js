@@ -40,6 +40,8 @@ export class RtcSession extends EventTarget {
     this.incomingFiles = new Map();
     this.closed = false;
     this.makingOffer = false;
+    this.offerAt = 0;
+    this.pendingOffer = null; // options of an offer waiting for the current one to be answered
     this.acceptFile = async () => ({ ok: false });
 
     const pc = this.pc;
@@ -55,6 +57,12 @@ export class RtcSession extends EventTarget {
     pc.onconnectionstatechange = () => {
       console.info(`[rtc] connection ${pc.connectionState}`);
       this.#emit('state', pc.connectionState);
+    };
+    pc.onsignalingstatechange = () => {
+      if (pc.signalingState !== 'stable' || !this.pendingOffer || this.makingOffer) return;
+      const options = this.pendingOffer;
+      this.pendingOffer = null;
+      this.#offer(options);
     };
     pc.ontrack = (event) => this.#emit('track', event);
     pc.ondatachannel = ({ channel }) => this.#adoptChannel(channel);
@@ -89,6 +97,7 @@ export class RtcSession extends EventTarget {
     if (this.closed) return;
     try {
       this.makingOffer = true;
+      this.offerAt = performance.now();
       const offer = await this.pc.createOffer(options);
       await this.pc.setLocalDescription(offer);
       console.info(`[rtc] sending offer${options?.iceRestart ? ' (ICE restart)' : ''}`);
@@ -101,12 +110,40 @@ export class RtcSession extends EventTarget {
   }
 
   restartIce() {
-    if (this.role === 'host' && !this.closed) this.#offer({ iceRestart: true });
+    if (this.role === 'host' && !this.closed) this.#offerWhenStable({ iceRestart: true });
   }
 
   /** New offer with the current transceiver settings (e.g. another codec). */
   renegotiate() {
-    if (this.role === 'host' && !this.closed) this.#offer();
+    if (this.role === 'host' && !this.closed) this.#offerWhenStable({});
+  }
+
+  // One offer at a time: an offer made before the answer to the previous one
+  // arrived would get that answer applied to it, and the second answer would
+  // be refused (the session then never recovers). It waits for the answer,
+  // unless that answer looks lost.
+  #offerWhenStable(options) {
+    const waiting = this.makingOffer || (this.pc.signalingState !== 'stable' && performance.now() - this.offerAt < 5000);
+    if (!waiting) {
+      this.#offer(options);
+      return;
+    }
+    this.pendingOffer = { iceRestart: Boolean(options.iceRestart || this.pendingOffer?.iceRestart) };
+  }
+
+  // Relays may deliver a candidate of an ICE restart before the description
+  // it belongs to: it is kept and tried again with the next description.
+  async #addCandidate(candidate) {
+    try {
+      await this.pc.addIceCandidate(candidate);
+    } catch {
+      this.#keepCandidate(candidate);
+    }
+  }
+
+  #keepCandidate(candidate) {
+    this.pendingCandidates.push(candidate);
+    if (this.pendingCandidates.length > 100) this.pendingCandidates.shift();
   }
 
   async #onSignal(data) {
@@ -120,10 +157,11 @@ export class RtcSession extends EventTarget {
           await pc.setLocalDescription(await pc.createAnswer());
           api.send('session:signal', { description: pc.localDescription.toJSON() });
         }
-        for (const c of this.pendingCandidates.splice(0)) await pc.addIceCandidate(c).catch(() => {});
+        const pending = this.pendingCandidates.splice(0);
+        for (const c of pending) await this.#addCandidate(c);
       } else if (data.candidate) {
-        if (!pc.remoteDescription) this.pendingCandidates.push(data.candidate);
-        else await pc.addIceCandidate(data.candidate).catch(() => {});
+        if (!pc.remoteDescription) this.#keepCandidate(data.candidate);
+        else await this.#addCandidate(data.candidate);
       }
     } catch (err) {
       console.error('signaling error', err);

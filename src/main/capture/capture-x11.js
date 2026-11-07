@@ -11,6 +11,18 @@ const IPC_CREAT = 0o1000;
 const IPC_RMID = 0;
 const ALL_PLANES = 0xffffffffffffffffn;
 
+// Xlib's default error handler ends the process: a grab of a rectangle that
+// no longer fits the screen (resolution changed) would kill the helper. This
+// one only counts the error; the failing call then reports it.
+let errorHandler = null;
+function installErrorHandler(x11) {
+  if (errorHandler) return;
+  const proto = koffi.proto('int PD_XErrorHandler(void *dpy, void *event)');
+  const XSetErrorHandler = x11.func('void *XSetErrorHandler(PD_XErrorHandler *handler)');
+  errorHandler = koffi.register(() => 0, koffi.pointer(proto));
+  XSetErrorHandler(errorHandler);
+}
+
 let types = null;
 function declareTypes() {
   types ??= {
@@ -76,6 +88,7 @@ export function openX11Capture(rect) {
   // memory it does not own).
   const memcpy = libc.func('void *memcpy(_Out_ uint8_t *dst, void *src, size_t n)');
 
+  installErrorHandler(x11);
   const dpy = XOpenDisplay(null);
   if (!dpy) throw new Error('cannot open the X display');
   let image = null;

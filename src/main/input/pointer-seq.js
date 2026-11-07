@@ -28,6 +28,12 @@ export class PointerSequencer {
         if (seq <= this.last) return false;
         if (Number.isSafeInteger(ev[4]) && ev[4] > this.button) return false;
         this.last = seq;
+        // A numbered move without a click number is a resting position sent
+        // on the ordered reliable channel: every click sent before it has
+        // arrived. Catches up when clicks were never counted here (input
+        // helper restarted, events dropped), else later moves would wait for
+        // a click that is not coming.
+        if (!Number.isSafeInteger(ev[4]) && seq > this.button) this.button = seq;
         return true;
       }
       case 'd':

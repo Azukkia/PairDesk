@@ -268,8 +268,8 @@ const fr = {
   'quality.speed': 'Vitesse optimisée',
   'quality.balanced': 'Équilibrée',
   'quality.quality': 'Qualité optimisée',
-  'quality.speedHint': 'le plus fluide, 60 i/s',
-  'quality.balancedHint': 'net et réactif',
+  'quality.speedHint': 'le plus fluide, résolution réduite',
+  'quality.balancedHint': 'net et réactif, 60 i/s',
   'quality.qualityHint': 'image la plus nette',
 
   'keys.ctrlAltDel': 'Ctrl+Alt+Suppr',
@@ -581,8 +581,8 @@ const en = {
   'quality.speed': 'Optimise speed',
   'quality.balanced': 'Balanced',
   'quality.quality': 'Optimise quality',
-  'quality.speedHint': 'smoothest, 60 fps',
-  'quality.balancedHint': 'sharp and responsive',
+  'quality.speedHint': 'smoothest, reduced resolution',
+  'quality.balancedHint': 'sharp and responsive, 60 fps',
   'quality.qualityHint': 'sharpest picture',
 
   'keys.ctrlAltDel': 'Ctrl+Alt+Del',

@@ -20,7 +20,7 @@ let videoSender = null;
 let videoTransceiver = null;
 let audioTrack = null;
 let quality = 'balanced';
-let captureFps = 30;
+let captureFps = QUALITY_PRESETS.balanced.maxFramerate;
 let codecFirst = 'vp9';
 const scaler = new AdaptiveScaler();
 const cpuWatch = new CpuWatch();
@@ -147,12 +147,14 @@ function toggleChat(open = !chatOpen) {
   resize();
 }
 
-// The picture without the mouse cursor (native-capture.js) while it works;
+// The picture without the mouse cursor (native-capture.js) for viewers that
+// draw the host's cursor themselves (desktop 1.3+), while it works;
 // Chromium's capture, which paints the cursor in, otherwise.
-let nativeCapture = true;
+let nativeFailures = 0;
+const useNativeCapture = () => nativeFailures < 3 && init.peer.platform !== 'android' && versionAtLeast(init.peer.version, '1.3.0');
 
 async function capture(display, withAudio, fps = captureFps) {
-  if (nativeCapture) {
+  if (useNativeCapture()) {
     try {
       const native = await startNativeCapture(api, { displayId: display.displayId, fps, onFailure: onNativeFailure });
       // Large screens come already halved: the encoder scales down less.
@@ -166,15 +168,17 @@ async function capture(display, withAudio, fps = captureFps) {
       return new MediaStream(tracks);
     } catch (err) {
       console.info(`[host] native capture unavailable (${err.message}): Chromium capture`);
-      nativeCapture = false;
+      nativeFailures = Infinity;
     }
   }
   return captureChromium(display, withAudio, fps);
 }
 
+// A capture that worked and then stopped (e.g. the screen resolution
+// changed) is started again; Chromium's capture after a few failures.
 function onNativeFailure(err) {
-  console.warn(`[host] native capture stopped (${err.message}): Chromium capture`);
-  nativeCapture = false;
+  nativeFailures++;
+  console.warn(`[host] native capture stopped (${err.message}): ${useNativeCapture() ? 'restarting it' : 'Chromium capture'}`);
   if (videoSender) recapture().catch((e) => console.warn('recapture failed', e?.message || e));
 }
 
@@ -436,7 +440,8 @@ function onConnectionState(state) {
     rtc.stats().then((s) => setStatus(s.relayed ? t('viewer.relayed') : t('viewer.direct')));
   } else if (state === 'disconnected') {
     setStatus(t('viewer.reconnecting'));
-    timers.restart = setTimeout(() => rtc.restartIce(), 4000);
+    // A network change: try another path soon (often a second is enough).
+    timers.restart = setTimeout(() => rtc.restartIce(), 1500);
   } else if (state === 'failed') {
     setStatus(t('viewer.reconnecting'));
     rtc.restartIce();

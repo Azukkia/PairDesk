@@ -170,6 +170,7 @@ export class SessionManager extends EventEmitter {
     this.contexts.set(wcId, entry);
     win.on('closed', () => {
       this.contexts.delete(wcId);
+      entry.reconnecting?.abort();
       this.endSession(entry.sid, 'closed');
     });
     this.#setClipboard(entry, Boolean(caps.clipboard) && this.settings.get('viewerClipboard'));
@@ -179,10 +180,19 @@ export class SessionManager extends EventEmitter {
   /** Reconnects a viewer whose session ended, reusing the same window. */
   async reconnect(entry) {
     const peerId = entry.peerId;
+    // Closing the viewer while it reconnects cancels the attempt.
+    const abort = new AbortController();
+    entry.reconnecting?.abort();
+    entry.reconnecting = abort;
     try {
       const session = await this.signaling.connect(peerId, entry.prs, {
         intro: { name: this.displayName(), platform: process.platform, appVersion: this.appVersion },
+        signal: abort.signal,
       });
+      if (abort.signal.aborted || entry.win.isDestroyed()) {
+        this.signaling.close(session.sid, 'closed');
+        return { ok: false, error: 'cancelled' };
+      }
       this.outgoing.delete(entry.sid);
       Object.assign(entry, {
         sid: session.sid,
@@ -198,6 +208,8 @@ export class SessionManager extends EventEmitter {
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.code || 'unknown', retryIn: err.retryIn };
+    } finally {
+      if (entry.reconnecting === abort) entry.reconnecting = null;
     }
   }
 
