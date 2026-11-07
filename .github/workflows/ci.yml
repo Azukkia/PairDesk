@@ -107,6 +107,93 @@ jobs:
             dist/latest.yml
           retention-days: 90
 
+  macos:
+    name: Tests + app (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      # The session test needs Screen Recording and Accessibility, which macOS
+      # runners may refuse (TCC): it is then skipped and says so in the log.
+      - name: End-to-end tests (sources)
+        run: npm run test:e2e
+        env:
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-macos
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Build the universal app (Intel + Apple silicon, ad-hoc signed dmg and zip)
+        run: npm run dist:mac
+        env:
+          # Ad-hoc signing involves no secret: also for pull requests.
+          CSC_FOR_PULL_REQUEST: "true"
+      - name: Check the app bundle
+        run: |
+          app=dist/mac-universal/PairDesk.app
+          archs=$(lipo -archs "$app/Contents/MacOS/PairDesk")
+          echo "architectures: $archs"
+          [[ "$archs" == *x86_64* && "$archs" == *arm64* ]]
+          ls "$app/Contents/Resources/app.asar.unpacked/node_modules/@koromix"
+          lipo -archs "$app/Contents/Resources/app.asar.unpacked/node_modules/@koromix/koffi-darwin-x64/darwin_x64/koffi.node"
+          lipo -archs "$app/Contents/Resources/app.asar.unpacked/node_modules/@koromix/koffi-darwin-arm64/darwin_arm64/koffi.node"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep 'Signature=adhoc'
+          plist="$app/Contents/Info.plist"
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$plist")" = pairdesk ]
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$plist")" = false ]
+          /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist"
+          test -f "$app/Contents/Resources/icon.icns"
+      - name: Install from the dmg, then smoke-test the installed app
+        run: |
+          dmg=$(ls dist/PairDesk-*-mac.dmg | head -1)
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" "$dmg"
+          ls -la "$RUNNER_TEMP/dmg"
+          test -L "$RUNNER_TEMP/dmg/Applications"
+          mkdir -p "$RUNNER_TEMP/Applications"
+          ditto "$RUNNER_TEMP/dmg/PairDesk.app" "$RUNNER_TEMP/Applications/PairDesk.app"
+          hdiutil detach "$RUNNER_TEMP/dmg"
+          PAIRDESK_PACKAGED_EXE="$RUNNER_TEMP/Applications/PairDesk.app/Contents/MacOS/PairDesk" node --test test/e2e/smoke.test.js
+        env:
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-packaged
+      - name: Smoke test of the Intel half (Rosetta)
+        run: |
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::notice::Rosetta is not available on this runner: Intel half not tested"
+            exit 0
+          fi
+          wrapper="$RUNNER_TEMP/pairdesk-x64.sh"
+          printf '#!/bin/sh\nexec arch -x86_64 "%s" "$@"\n' "$RUNNER_TEMP/Applications/PairDesk.app/Contents/MacOS/PairDesk" > "$wrapper"
+          chmod +x "$wrapper"
+          PAIRDESK_PACKAGED_EXE="$wrapper" node --test test/e2e/smoke.test.js
+        env:
+          PAIRDESK_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-packaged-x64
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-macos-packaged
+          path: ${{ runner.temp }}/e2e-packaged*
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PairDesk-mac
+          path: |
+            dist/PairDesk-*-mac.dmg
+            dist/PairDesk-*-mac.zip
+            dist/latest-mac.yml
+          retention-days: 90
+
   android:
     name: Android app
     runs-on: ubuntu-latest

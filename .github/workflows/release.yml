@@ -8,6 +8,7 @@
 # Release files never expire. Fixed-name copies give permanent links to the
 # latest version, e.g.
 #   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe
+#   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-mac.dmg
 #   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk
 # (the Android app, signed with the key of the ANDROID_* repository secrets;
 # the desktop app's home screen offers it through a QR code).
@@ -76,7 +77,15 @@ jobs:
           - name: Linux
             os: ubuntu-latest
             args: --linux
+          # Universal app (Intel + Apple silicon), ad-hoc signed, not notarized.
+          # New: while it settles, a failure there does not hold back the
+          # Windows and Linux release.
+          - name: macOS
+            os: macos-latest
+            args: --mac --universal
+            experimental: true
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -92,6 +101,9 @@ jobs:
       - name: Build the screen capture without cursor (Windows)
         if: runner.os == 'Windows'
         run: npm run build:capture
+      - name: Add koffi's binaries for both Mac architectures
+        if: runner.os == 'macOS'
+        run: node scripts/koffi-mac.mjs
       - name: Build and upload to the draft release
         run: npx electron-builder ${{ matrix.args }} --publish always
         env:
@@ -107,6 +119,9 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             cp "dist/PairDesk-Setup-$VERSION.exe" dist/PairDesk-Setup.exe
             gh release upload "v$VERSION" dist/PairDesk-Setup.exe --clobber --repo "$GITHUB_REPOSITORY"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            cp "dist/PairDesk-$VERSION-mac.dmg" dist/PairDesk-mac.dmg
+            gh release upload "v$VERSION" dist/PairDesk-mac.dmg --clobber --repo "$GITHUB_REPOSITORY"
           else
             cp "dist/PairDesk-$VERSION-x86_64.AppImage" dist/PairDesk-x86_64.AppImage
             cp "dist/PairDesk-$VERSION-amd64.deb" dist/PairDesk-amd64.deb
