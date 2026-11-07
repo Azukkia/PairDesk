@@ -136,17 +136,20 @@ test('input helper: drag replay presses, waits for the native drag, carries it a
   calls.length = 0;
   core.handleMain({ type: 'drag', rid: 1, from: { x: 10, y: 50 }, to: { x: 90, y: 60 } });
   await new Promise((r) => setTimeout(r, 300));
-  // Remote input is ignored while the replay owns the mouse.
-  core.handleRenderer([['m', 0, 0]]);
+  // Remote input waits while the replay owns the mouse.
+  core.handleRenderer([['m', 0, 0, 1]]);
+  core.handleMain({ type: 'input', id: 's', events: [['d', 2, 0.5, 0.5, 2], ['u', 2, 0.5, 0.5, 3]] });
   core.handleMain({ type: 'drag-started' });
   await new Promise((r) => setTimeout(r, 1000));
   assert.deepEqual(replies.at(-1), { type: 'reply', rid: 1, value: { ok: true } });
   assert.deepEqual(calls.slice(0, 3), [['release'], ['move', 10, 50], ['button', 0, true]]);
-  assert.ok(!calls.some((c) => c[0] === 'move' && c[1] === 0 && c[2] === 0), 'remote move ignored during the drag');
-  const ups = calls.filter((c) => c[0] === 'button' && !c[2]);
-  assert.equal(ups.length, 1);
-  const lastMove = calls.filter((c) => c[0] === 'move').at(-1);
-  assert.deepEqual(lastMove, ['move', 90, 60]);
+  const drop = calls.findIndex((c) => c[0] === 'button' && c[1] === 0 && !c[2]);
+  assert.deepEqual(calls[drop - 1], ['move', 90, 60], 'dropped on the target');
+  assert.deepEqual(calls.slice(drop + 1), [['move', 0, 0], ['move', 49.5, 49.5], ['button', 2, true], ['move', 49.5, 49.5], ['button', 2, false]],
+    'then the remote input, in order');
+  // The numbered click counted: the next moves are applied.
+  core.handleRenderer([['m', 0.25, 0.25, 4, 3]]);
+  assert.deepEqual(calls.at(-1), ['move', 24.75, 24.75]);
 
   // Without "drag-started" the button is released where it was pressed.
   calls.length = 0;
