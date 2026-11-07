@@ -226,13 +226,15 @@ private fun HostLive(graph: AppGraph, session: HostSession, state: HostState) {
                         Text(stringResource(R.string.host_control_disabled, name), style = MaterialTheme.typography.bodySmall)
                     } else if (service == null) {
                         Text(stringResource(R.string.host_control_needs_service, name), style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { open(context, PairDeskAccessibilityService.settingsIntent()) }) {
+                        // One under the other: side by side, the second one had no width
+                        // left on a phone and its text stretched the card down the screen.
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { open(context, PairDeskAccessibilityService.settingsIntent()) }, modifier = Modifier.fillMaxWidth()) {
                                 Icon(painterResource(R.drawable.ic_accessibility), contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(stringResource(R.string.settings_open_accessibility))
                             }
-                            OutlinedButton(onClick = { open(context, PairDeskAccessibilityService.appDetailsIntent(context)) }) {
+                            OutlinedButton(onClick = { open(context, PairDeskAccessibilityService.appDetailsIntent(context)) }, modifier = Modifier.fillMaxWidth()) {
                                 Text(stringResource(R.string.host_app_info))
                             }
                         }
