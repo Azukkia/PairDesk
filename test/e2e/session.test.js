@@ -18,6 +18,23 @@ import {
   root, artifacts, hostRoot, ctrlRoot, packaged, startSignaling, launch, waitForWindow, sleep, poll, dumpDiagnostics,
 } from './helpers.js';
 
+// macOS pasteboard through AppKit (JavaScript for Automation): copied files
+// as Finder copies them, and the file URLs of the pasteboard items.
+const MAC_WRITE_FILE = `ObjC.import('AppKit');
+function run(argv) {
+  const pb = $.NSPasteboard.generalPasteboard;
+  pb.clearContents;
+  pb.writeObjects($([$.NSURL.fileURLWithPath(argv[0])]));
+}`;
+const MAC_READ_FILES = `ObjC.import('AppKit');
+const items = $.NSPasteboard.generalPasteboard.pasteboardItems;
+const out = [];
+for (let i = 0; i < items.count; i++) {
+  const url = items.objectAtIndex(i).stringForType('public.file-url');
+  if (url && !url.isNil()) out.push($.NSURL.URLWithString(url).filePathURL.absoluteString.js);
+}
+out.join('\\n');`;
+
 /** Whether the host captures its screen itself, without the cursor (src/main/capture). */
 function nativeCaptureExpected() {
   if (process.platform === 'linux') return process.env.XDG_SESSION_TYPE !== 'wayland';
@@ -384,8 +401,12 @@ async function scenario(host, ctrl) {
       }
       if (process.platform === 'darwin') {
         // Copied files are pasteboard items of type public.file-url (as Finder writes them).
-        const url = await host.app.evaluate(({ clipboard }) => clipboard.read('public.file-url'));
-        return url?.startsWith('file:') ? [fileURLToPath(url)] : [];
+        try {
+          const out = execFileSync('osascript', ['-l', 'JavaScript', '-e', MAC_READ_FILES], { encoding: 'utf8' });
+          return out.split('\n').filter((l) => l.startsWith('file:')).map((l) => fileURLToPath(l));
+        } catch {
+          return []; // no file in the pasteboard
+        }
       }
       const list = await host.app.evaluate(async ({ clipboard }) => {
         const [item] = await clipboard.read();
@@ -396,10 +417,7 @@ async function scenario(host, ctrl) {
     if (process.platform === 'win32') {
       execFileSync('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Path '${copied.replace(/'/g, "''")}'`]);
     } else if (process.platform === 'darwin') {
-      await ctrl.app.evaluate(({ clipboard }, uri) => {
-        clipboard.clear();
-        clipboard.writeBuffer('public.file-url', Buffer.from(uri));
-      }, pathToFileURL(copied).href);
+      execFileSync('osascript', ['-l', 'JavaScript', '-e', MAC_WRITE_FILE, copied]);
     } else {
       await ctrl.app.evaluate(({ clipboard, ClipboardItem }, uri) => clipboard.write([
         new ClipboardItem({ 'electron application/osclipboard;format="text/uri-list"': uri }),

@@ -169,7 +169,8 @@ async function scenario(pc, phone) {
     const received = ((await shown()) - q0) / 3;
     const fps = ((await pc.main.evaluate(() => window.pairdesk.invoke('e2e:vcam'))).frames - t0) / 3;
     process.stderr.write(`webcam: ${JSON.stringify(stats)}, ${fps.toFixed(1)} frames/s (${received.toFixed(1)} received)\n`);
-    assert.ok(fps >= 12, `webcam frame rate ${fps}`);
+    // macOS runners are slower (the fake webcam path there checks the pipeline, not speed).
+    assert.ok(fps >= (process.platform === 'darwin' ? 8 : 12), `webcam frame rate ${fps}`);
     if (process.platform === 'win32') {
       await checkVirtualWebcam(pc);
       await poll(async () => (await vcamState()) === 'in-use', { message: 'webcam reported in use' });
