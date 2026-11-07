@@ -4,6 +4,8 @@
 //
 // Linux: run under Xvfb (xvfb-run -a -s "-screen 0 1600x1000x24" npm run test:e2e)
 // Windows: run on an interactive desktop.
+// macOS: the app needs Screen Recording and Accessibility; skipped when the
+// machine refuses them (CI runners usually do).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -94,6 +96,16 @@ test('two PairDesk instances: connect, view, control, chat, files, disconnect', 
     await ctrl.app.close().catch(() => {});
     await signaling.close();
   });
+  if (process.platform === 'darwin') {
+    const { permissions } = await host.main.evaluate(() => window.pairdesk.invoke('app:state'));
+    const missing = [permissions.screen !== 'granted' && `Screen Recording (${permissions.screen})`, !permissions.accessibility && 'Accessibility']
+      .filter(Boolean);
+    if (missing.length) {
+      process.stderr.write(`macOS refuses ${missing.join(' and ')} to the test app (TCC): session test skipped\n`);
+      t.skip(`macOS privacy permissions not granted on this machine: ${missing.join(', ')}`);
+      return;
+    }
+  }
   try {
     await scenario(host, ctrl);
   } catch (err) {
@@ -309,8 +321,9 @@ async function scenario(host, ctrl) {
   }
 
   // 5e. Files dropped on the remote screen land where they were dropped: here
-  // in a window of the host computer that accepts file drops.
-  {
+  // in a window of the host computer that accepts file drops. (macOS hosts
+  // save them in Downloads/PairDesk.)
+  if (process.platform !== 'darwin') {
     const zone = { x: work.x + 120, y: work.y + 120, width: 320, height: 220 };
     // The main window was made topmost above: out of the way.
     await setVisible(host.app, '/main/', false);
@@ -356,6 +369,13 @@ async function scenario(host, ctrl) {
         const out = execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }'], { encoding: 'utf8' });
         return out.split(/\r?\n/).filter(Boolean);
       }
+      if (process.platform === 'darwin') {
+        try {
+          return [execFileSync('osascript', ['-e', 'POSIX path of (the clipboard as «class furl»)'], { encoding: 'utf8' }).trim()];
+        } catch {
+          return []; // no file in the clipboard (yet)
+        }
+      }
       const list = await host.app.evaluate(async ({ clipboard }) => {
         const [item] = await clipboard.read();
         return item?.types.includes('text/uri-list') ? (await item.getType('text/uri-list')).text() : '';
@@ -364,6 +384,8 @@ async function scenario(host, ctrl) {
     };
     if (process.platform === 'win32') {
       execFileSync('powershell', ['-NoProfile', '-Command', `Set-Clipboard -Path '${copied.replace(/'/g, "''")}'`]);
+    } else if (process.platform === 'darwin') {
+      execFileSync('osascript', ['-e', `set the clipboard to (POSIX file "${copied}")`]);
     } else {
       await ctrl.app.evaluate(({ clipboard, ClipboardItem }, uri) => clipboard.write([
         new ClipboardItem({ 'electron application/osclipboard;format="text/uri-list"': uri }),
