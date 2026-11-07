@@ -9,6 +9,7 @@ import {
 } from 'electron';
 import { log, initLogFile } from './log.js';
 import { createPermissions } from './permissions.js';
+import { setMacMenu } from './macos.js';
 import { loadConfig } from './config.js';
 import { Settings } from './settings.js';
 import { Network } from './network.js';
@@ -64,6 +65,15 @@ if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
 
 const startHidden = process.argv.includes('--hidden');
 let quitting = false;
+
+// macOS hands pairdesk:// links over with "open-url", before "ready" when a
+// link starts PairDesk: kept until the main window can take them.
+const openedUrls = [];
+let onOpenUrl = (url) => openedUrls.push(url);
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  onOpenUrl(url);
+});
 
 function extractDeepLink(argv) {
   const link = argv.find((a) => /^pairdesk:/i.test(a));
@@ -165,7 +175,7 @@ async function main() {
     onMainHidden: () => {
       if (!settings.get('trayHintShown')) {
         settings.set('trayHintShown', true);
-        notify(t('tray.hintTitle'), t('tray.hintBody'));
+        notify(t('tray.hintTitle'), t(process.platform === 'darwin' ? 'tray.hintBodyMac' : 'tray.hintBody'));
       }
     },
   });
@@ -272,6 +282,7 @@ async function main() {
           fs.rmSync(file, { force: true });
         }
       } else {
+        // macOS login items take no arguments: PairDesk starts with its window there.
         app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] });
       }
     } catch (err) {
@@ -285,6 +296,7 @@ async function main() {
       lang = resolveLanguage(settings.get('language'), app.getLocale());
       t = createTranslator(lang);
       tray?.refresh(t);
+      refreshMenu();
     }
     if ('theme' in changed) nativeTheme.themeSource = settings.get('theme');
     if ('launchAtStartup' in changed) applyLaunchAtStartup(settings.get('launchAtStartup'));
@@ -517,27 +529,36 @@ async function main() {
   network.start();
   sessions.attach(network.signaling);
   windows.createMain({ show: !startHidden });
+  // Quitting while somebody is connected is confirmed.
+  const requestQuit = async () => {
+    if (sessions.hasActiveSessions()) {
+      const res = await dialog.showMessageBox({
+        type: 'warning', buttons: [t('tray.quitConfirm'), t('common.cancel')], defaultId: 1, cancelId: 1, message: t('tray.quitWarning'),
+      });
+      if (res.response !== 0) return;
+    }
+    quitting = true;
+    app.quit();
+  };
+  const showPage = (page) => {
+    windows.showMain();
+    windows.sendToMain('app:navigate', page);
+  };
   tray = createTray({
     appPath,
     t,
     id: network.myId,
     onOpen: () => windows.showMain(),
     onCheckUpdates: () => {
-      windows.showMain();
-      windows.sendToMain('app:navigate', 'about');
+      showPage('about');
       updater.check({ manual: true });
     },
-    onQuit: async () => {
-      if (sessions.hasActiveSessions()) {
-        const res = await dialog.showMessageBox({
-          type: 'warning', buttons: [t('tray.quitConfirm'), t('common.cancel')], defaultId: 1, cancelId: 1, message: t('tray.quitWarning'),
-        });
-        if (res.response !== 0) return;
-      }
-      quitting = true;
-      app.quit();
-    },
+    onQuit: requestQuit,
   });
+  const refreshMenu = () => {
+    if (process.platform === 'darwin') setMacMenu(t, { onAbout: () => showPage('about'), onSettings: () => showPage('settings'), onQuit: requestQuit });
+  };
+  refreshMenu();
   applyLaunchAtStartup(settings.get('launchAtStartup'));
   updater.schedule(settings.get('autoCheckUpdates') && !E2E);
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient('pairdesk');
@@ -555,10 +576,8 @@ async function main() {
     windows.showMain();
     openDeepLink(extractDeepLink(argv));
   });
-  app.on('open-url', (event, url) => {
-    event.preventDefault();
-    openDeepLink(extractDeepLink([url]));
-  });
+  onOpenUrl = (url) => openDeepLink(extractDeepLink([url]));
+  openedUrls.splice(0).forEach(onOpenUrl);
   app.on('activate', () => windows.showMain());
   app.on('before-quit', () => {
     quitting = true;

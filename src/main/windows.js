@@ -165,6 +165,8 @@ export class Windows {
       title: 'PairDesk — Session',
     });
     win.setAlwaysOnTop(true, 'floating');
+    // macOS: the panel follows the user from one Space (virtual desktop) to another.
+    if (process.platform === 'darwin') win.setVisibleOnAllWorkspaces(true);
     this.placeHost(win, 200);
     win.once('ready-to-show', () => win.showInactive());
     return win;

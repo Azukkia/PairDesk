@@ -1,5 +1,6 @@
-// Renders assets/logo.svg into the PNG/ICO files used by the app, the tray
-// and the installer. Run with `npm run icons` after changing the logo.
+// Renders assets/logo.svg into the PNG/ICO/ICNS files used by the app, the
+// tray (menu bar on macOS) and the installers. Run with `npm run icons` after
+// changing the logo.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,9 +10,39 @@ import { Resvg } from '@resvg/resvg-js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const svg = fs.readFileSync(path.join(root, 'assets', 'logo.svg'));
 
-function render(size) {
-  const img = new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render();
+function render(size, source = svg) {
+  const img = new Resvg(source, { fitTo: { mode: 'width', value: size } }).render();
   return { size, png: img.asPng(), rgba: img.pixels };
+}
+
+// macOS menu bar icon: a "template" image, black on transparent, that macOS
+// tints for light and dark menu bars. The logo's two screens and pointer,
+// without the coloured background, the pointer cut out of the front screen.
+const templateSvg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="38 38 180 180">
+  <defs>
+    <mask id="gap"><rect width="256" height="256" fill="#fff"/><rect x="88" y="92" width="130" height="100" rx="21" fill="#000"/></mask>
+    <mask id="pointer"><rect width="256" height="256" fill="#fff"/>
+      <path d="M136 117 L136 163 L148 151.5 L157 172 L167 167.5 L158 147.5 L174.5 147.5 Z" fill="#000" stroke="#000" stroke-width="5" stroke-linejoin="round"/></mask>
+  </defs>
+  <rect x="50" y="58" width="108" height="78" rx="15" fill="none" stroke="#000" stroke-width="16" mask="url(#gap)"/>
+  <rect x="98" y="102" width="110" height="80" rx="15" fill="#000" mask="url(#pointer)"/>
+  <rect x="134" y="192" width="38" height="13" rx="6.5" fill="#000"/>
+</svg>`);
+
+// Apple icon image: PNG entries ic11/ic12 (16/32 pt @2x), ic07/ic08/ic09 (128/256/512 pt),
+// ic13/ic14/ic10 (128/256/512 pt @2x).
+function icns(images) {
+  const types = [['ic11', 32], ['ic12', 64], ['ic07', 128], ['ic13', 256], ['ic08', 256], ['ic14', 512], ['ic09', 512], ['ic10', 1024]];
+  const entries = types.map(([type, size]) => {
+    const head = Buffer.alloc(8);
+    head.write(type, 0, 'ascii');
+    head.writeUInt32BE(8 + images[size].png.length, 4);
+    return Buffer.concat([head, images[size].png]);
+  });
+  const head = Buffer.alloc(8);
+  head.write('icns', 0, 'ascii');
+  head.writeUInt32BE(8 + entries.reduce((n, e) => n + e.length, 0), 4);
+  return Buffer.concat([head, ...entries]);
 }
 
 // Classic ICO: 32-bit BMP entries for small sizes, PNG for 256 px.
@@ -59,7 +90,7 @@ function ico(images) {
   return Buffer.concat([dir, ...entries.map((e) => e.data)]);
 }
 
-const sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256, 512];
+const sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256, 512, 1024];
 const images = Object.fromEntries(sizes.map((s) => [s, render(s)]));
 const write = (rel, data) => {
   fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
@@ -72,5 +103,8 @@ write('assets/icon.png', images[512].png);
 write('assets/icon.ico', appIco);
 write('assets/tray.png', images[32].png);
 write('assets/tray.ico', ico([16, 20, 24, 32, 48].map((s) => images[s])));
+write('assets/trayTemplate.png', render(16, templateSvg).png);
+write('assets/trayTemplate@2x.png', render(32, templateSvg).png);
 write('build/icon.png', images[512].png);
 write('build/icon.ico', appIco);
+write('build/icon.icns', icns(images));

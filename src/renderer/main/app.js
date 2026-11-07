@@ -470,7 +470,7 @@ function SettingsPage() {
     settingRow(t('settings.language'), null, select('language', [['auto', t('language.auto')], ['fr', t('language.fr')], ['en', t('language.en')]])),
     settingRow(t('settings.theme'), null, select('theme', [['system', t('theme.system')], ['light', t('theme.light')], ['dark', t('theme.dark')]])),
     settingRow(t('settings.launchAtStartup'), null, toggle('launchAtStartup')),
-    settingRow(t('settings.closeToTray'), null, toggle('closeToTray')));
+    settingRow(t(state.platform === 'darwin' ? 'settings.closeToTrayMac' : 'settings.closeToTray'), null, toggle('closeToTray')));
 
   const security = h('section', { class: 'card settings-section' },
     h('h2', null, icon('lock'), t('settings.security')),
