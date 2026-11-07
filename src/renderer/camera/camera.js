@@ -18,7 +18,7 @@ const st = {
   fill: readPref('fill') === '1', // crop to fill the webcam picture instead of fitting it
   vcam: null, // { supported, active, error, name }
   inUse: false, // an application shows the webcam
-  attached: false,
+  attached: null, // camera:attach, once asked
 };
 let init = null;
 let rtc = null;
@@ -231,12 +231,15 @@ function end() {
  */
 async function feedWebcam(videoTrack) {
   if (!st.attached) {
-    st.attached = true;
     frameWorker();
-    st.vcam = await api.invoke('camera:attach');
-    renderVcam();
+    st.attached = api.invoke('camera:attach').then((vcam) => {
+      st.vcam = vcam;
+      renderVcam();
+    });
   }
-  if (!st.vcam?.active) return;
+  await st.attached;
+  // A newer track arrived meanwhile: its own call feeds it.
+  if (videoTrack !== track || !st.vcam?.active) return;
   if (typeof MediaStreamTrackProcessor === 'function') {
     const { readable } = new MediaStreamTrackProcessor({ track: videoTrack });
     frameWorker().postMessage({ type: 'frames', readable }, [readable]);

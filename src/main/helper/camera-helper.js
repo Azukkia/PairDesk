@@ -98,21 +98,28 @@ parent.on('message', (e) => {
       parent.postMessage({ type: 'started', ...res });
       break;
     }
-    case 'port':
+    case 'port': {
       try {
         port?.close();
       } catch {
         /* ignore */
       }
-      port = e.ports[0] || null;
-      if (!port) break;
-      port.on('message', (m) => {
+      const from = e.ports[0] || null;
+      port = from;
+      if (!from) break;
+      from.on('message', (m) => {
         onFrame(m.data);
-        // One frame in flight: the window sends the next one after this.
-        port?.postMessage({ type: 'ack', connected: Boolean(camera && api.connected(camera)) });
+        // One frame in flight: its sender (this port, maybe not the newest
+        // one) sends the next one after this.
+        try {
+          from.postMessage({ type: 'ack', connected: Boolean(camera && api.connected(camera)) });
+        } catch {
+          /* port closed */
+        }
       });
-      port.start();
+      from.start();
       break;
+    }
     case 'stats':
       parent.postMessage({ type: 'stats', ...stats });
       break;
