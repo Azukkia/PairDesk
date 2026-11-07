@@ -18,6 +18,9 @@ export const MAX_TEXT_BYTES = 200 * 1024;
 const MAX_RICH_BYTES = 240 * 1024;
 // Images travel like a file, right away.
 export const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
+// Without a sequence number, an image is fetched again after this long
+// (another image copied changes nothing else).
+const IMAGE_CACHE_MS = 2000;
 
 const bytes = (s) => (s ? Buffer.byteLength(s, 'utf8') : 0);
 const fits = (text) => bytes(text) <= MAX_TEXT_BYTES;
@@ -29,7 +32,7 @@ export function richParts({ text = '', html = '', rtf = '' }) {
   let used = 0;
   for (const [key, value] of [['text', text], ['html', html], ['rtf', rtf]]) {
     if (!value || typeof value !== 'string') continue;
-    const size = bytes(value);
+    const size = bytes(JSON.stringify(value)); // as sent: quotes, backslashes, line breaks escaped
     if (size > MAX_TEXT_BYTES || used + size > MAX_RICH_BYTES) continue;
     out[key] = value;
     used += size;
@@ -62,22 +65,31 @@ export class ClipboardSync extends EventEmitter {
    * @param {Function} o.ClipboardItem Electron ClipboardItem
    * @param {object} [o.files]         Windows: { read(): string[]|null, write(paths): boolean } (clipboard-native.js)
    */
-  constructor({ clipboard, ClipboardItem, files = null, getSequence = null, intervalMs = 700, log }) {
+  constructor({ clipboard, ClipboardItem, files = null, getSequence = null, intervalMs = 700, imageCacheMs = IMAGE_CACHE_MS, log }) {
     super();
-    Object.assign(this, { clipboard, ClipboardItem, files, getSequence, intervalMs, log });
+    Object.assign(this, { clipboard, ClipboardItem, files, getSequence, intervalMs, imageCacheMs, log });
     this.users = 0;
     this.timer = null;
     this.lastKey = null;
     this.lastSeq = null;
     this.polling = false;
-    this.imageCache = null; // { key, png }: the same image is not fetched again every poll
+    this.imageCache = null; // { key, at, png }: the same image is not fetched again every poll
+    // Polls and writes take turns: a poll in the middle of a write would
+    // take the partner's content for a local change and send it back.
+    this.turn = Promise.resolve();
+  }
+
+  #exclusive(fn) {
+    const run = this.turn.then(fn);
+    this.turn = run.catch(() => {});
+    return run;
   }
 
   acquire() {
     if (this.users++ === 0) {
-      this.lastSeq = this.getSequence?.() ?? null;
-      this.read().then((c) => {
-        this.lastKey = this.#key(c);
+      this.#exclusive(async () => {
+        this.lastSeq = this.getSequence?.() ?? null;
+        this.lastKey = this.#key(await this.read());
       });
       this.timer = setInterval(() => this.#poll(), this.intervalMs);
     }
@@ -114,12 +126,13 @@ export class ClipboardSync extends EventEmitter {
       out.html = await text('text/html');
       out.rtf = await text('text/rtf');
       if (types.includes('image/png')) {
-        // Without a sequence number (X11) the image would be fetched again
-        // every poll: only when something else changed.
+        // Without a sequence number (X11, macOS) the image would be fetched
+        // again every poll: only when something else changed, or after a
+        // little while (another image may have been copied).
         const key = `${types.join(',')}|${this.getSequence ? this.getSequence() : out.text}`;
-        if (this.imageCache?.key !== key) {
+        if (this.imageCache?.key !== key || Date.now() - this.imageCache.at > this.imageCacheMs) {
           const blob = await item.getType('image/png');
-          this.imageCache = { key, png: Buffer.from(await blob.arrayBuffer()) };
+          this.imageCache = { key, at: Date.now(), png: Buffer.from(await blob.arrayBuffer()) };
         }
         out.png = this.imageCache.png;
       }
@@ -140,23 +153,23 @@ export class ClipboardSync extends EventEmitter {
     return h.digest('hex');
   }
 
-  async #poll() {
+  #poll() {
     if (this.polling) return;
-    if (this.getSequence) {
-      const seq = this.getSequence();
-      if (seq === this.lastSeq) return;
-      this.lastSeq = seq;
-    }
     this.polling = true;
-    try {
+    this.#exclusive(async () => {
+      if (this.getSequence) {
+        const seq = this.getSequence();
+        if (seq === this.lastSeq) return;
+        this.lastSeq = seq;
+      }
       const content = await this.read();
       const key = this.#key(content);
       if (key === this.lastKey) return;
       this.lastKey = key;
       if (!ClipboardSync.isEmpty(content)) this.emit('change', content);
-    } finally {
+    }).catch((err) => this.log?.warn(`[clipboard] poll: ${err.message}`)).finally(() => {
       this.polling = false;
-    }
+    });
   }
 
   static isEmpty(c) {
@@ -164,7 +177,11 @@ export class ClipboardSync extends EventEmitter {
   }
 
   /** Writes content received from a partner, without echoing it back. */
-  async write({ text = '', html = '', rtf = '', png = null, files = null } = {}) {
+  write(content) {
+    return this.#exclusive(() => this.#write(content));
+  }
+
+  async #write({ text = '', html = '', rtf = '', png = null, files = null } = {}) {
     try {
       if (files?.length) {
         if (this.files) {
@@ -191,6 +208,7 @@ export class ClipboardSync extends EventEmitter {
       return false;
     }
     this.lastSeq = this.getSequence?.() ?? null;
+    this.imageCache = null; // the image read back must be the one just written
     this.lastKey = this.#key(await this.read());
     return true;
   }

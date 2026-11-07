@@ -34,6 +34,7 @@ export class SessionManager extends EventEmitter {
     this.displayRectCache = new Map();
 
     clipboard.on('change', async (content) => {
+      clipTransfers.localChanged(); // remote content still on its way must not replace it
       const targets = this.#clipboardTargets();
       if (!targets.length) return;
       const payload = await clipTransfers.announce(content);

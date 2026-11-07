@@ -157,6 +157,7 @@ async function main() {
   });
   const clipTransfers = new ClipboardTransfers({ clipboard: clipboardSync, log });
   clipTransfers.cleanup();
+  setInterval(() => clipTransfers.sweep(), 10 * 60_000);
   const downloadsDir = () => process.env.PAIRDESK_DOWNLOADS_DIR || path.join(app.getPath('downloads'), 'PairDesk');
   const files = new FileReceiver({ getDirectory: downloadsDir, log });
 
@@ -471,13 +472,14 @@ async function main() {
   handle('files:begin', SESSION, (ctx, { name, size, drop, clip } = {}) => {
     if (clip) {
       // Clipboard content (image, copied files): into a staging folder.
-      const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name), Number(size)) : null;
-      if (!accepted) return { ok: false, error: 'disabled' };
       try {
+        const accepted = sessions.clipboardFilesAllowed(ctx, clip.kind) ? clipTransfers.accept(ctx, clip, String(name), Number(size)) : null;
+        if (!accepted) return { ok: false, error: 'disabled' };
         const res = files.begin(ctx.sid, accepted.name, Number(size), { directory: accepted.directory });
         clipTransfers.track(res.token, ctx, clip.cid, accepted);
         return { ok: true, ...res, clip: accepted.kind };
       } catch (err) {
+        log.warn(`[clipboard] file refused: ${err.message}`); // e.g. "A" and folder "a/" on Windows
         return { ok: false, error: err.message };
       }
     }
