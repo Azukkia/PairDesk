@@ -313,8 +313,9 @@ export class SessionManager extends EventEmitter {
 
   /**
    * A phone streams its camera to this computer (it knows the password):
-   * accepted right away, shown in a camera window and, on Windows, exposed
-   * to the applications as the "PairDesk Camera" webcam.
+   * accepted right away (or once the local user agrees, with "confirm
+   * incoming connections"), shown in a camera window and, on Windows,
+   * exposed to the applications as the "PairDesk Camera" webcam.
    */
   #onCamera(session) {
     if (this.camera) {
@@ -329,19 +330,13 @@ export class SessionManager extends EventEmitter {
       peerPlatform: session.peerPlatform,
       peerVersion: session.peerVersion || '',
       credential: session.credential,
+      state: this.settings.get('confirmIncoming') ? 'pending' : 'active',
       queue: [],
       ready: false,
       win: null,
     };
     this.camera = cam;
     this.log.info(`[session] camera of ${cam.peerId} connected (${cam.credential} password)`);
-    this.signaling.accept(cam.sid, {
-      name: this.displayName(),
-      caps: { control: false, files: false, clipboard: false, audio: false },
-      platform: process.platform,
-      appVersion: this.appVersion,
-      kind: 'camera',
-    }).catch((err) => this.log.warn(`[session] accept failed: ${err.message}`));
     cam.win = this.windows.createCamera({ peerName: cam.peerName, peerId: cam.peerId });
     const wcId = cam.win.webContents.id;
     this.contexts.set(wcId, cam);
@@ -349,13 +344,48 @@ export class SessionManager extends EventEmitter {
       this.contexts.delete(wcId);
       if (this.camera === cam) this.endSession(cam.sid, 'camera-closed');
     });
-    this.notify(this.t('notify.cameraTitle'), this.t('notify.cameraBody', { name: cam.peerName }), () => cam.win?.show());
+    if (cam.state === 'pending') {
+      // Same consent as a control session, in the camera window.
+      this.signaling.notifyWaiting(cam.sid);
+      cam.consentTimer = setTimeout(() => this.cameraConsent(cam.sid, false, 'timeout'), 45_000);
+      this.notify(this.t('notify.requestTitle'), this.t('notify.requestBody', { name: cam.peerName, id: cam.peerId }), () => cam.win?.show());
+    } else {
+      this.#activateCamera(cam);
+    }
     this.#changed();
+  }
+
+  #activateCamera(cam) {
+    cam.state = 'active';
+    this.signaling.accept(cam.sid, {
+      name: this.displayName(),
+      caps: { control: false, files: false, clipboard: false, audio: false },
+      platform: process.platform,
+      appVersion: this.appVersion,
+      kind: 'camera',
+    }).catch((err) => this.log.warn(`[session] accept failed: ${err.message}`));
+    this.notify(this.t('notify.cameraTitle'), this.t('notify.cameraBody', { name: cam.peerName }), () => cam.win?.show());
+  }
+
+  /** The local user's answer to a phone's camera (pending camera session). */
+  cameraConsent(sid, accept, reason = 'declined') {
+    const cam = this.camera;
+    if (!cam || cam.sid !== sid || cam.state !== 'pending') return false;
+    clearTimeout(cam.consentTimer);
+    if (accept) {
+      this.#activateCamera(cam);
+      cam.win?.webContents.send('session:state', { state: 'active' });
+      this.#changed();
+      return true;
+    }
+    this.signaling.reject(sid, reason === 'timeout' ? 'timeout' : 'declined');
+    this.#teardownCamera(cam, { notifyPeer: false, reason });
+    return true;
   }
 
   /** The camera window shows the picture: registers and starts the webcam, links the window to it. */
   async attachVirtualCamera(ctx) {
-    if (ctx !== this.camera || !this.virtualCamera) return { supported: false, active: false, error: null };
+    if (ctx !== this.camera || ctx.state !== 'active' || !this.virtualCamera) return { supported: false, active: false, error: null };
     const status = await this.virtualCamera.start();
     if (status.active && ctx === this.camera && !ctx.win.isDestroyed()) this.virtualCamera.attach(ctx.win.webContents);
     return status;
@@ -364,9 +394,12 @@ export class SessionManager extends EventEmitter {
   #teardownCamera(cam, { notifyPeer = true, reason = 'user' } = {}) {
     if (this.camera !== cam) return;
     this.camera = null;
-    if (notifyPeer) this.signaling.close(cam.sid, reason);
+    clearTimeout(cam.consentTimer);
+    if (notifyPeer && cam.state === 'pending') this.signaling.reject(cam.sid, 'declined');
+    else if (notifyPeer) this.signaling.close(cam.sid, reason);
     if (cam.win && !cam.win.isDestroyed()) cam.win.destroy();
     this.log.info(`[session] camera of ${cam.peerId} disconnected (${reason})`);
+    if (cam.state === 'active' && this.settings.get('regeneratePasswordAfterSession')) this.network.regeneratePassword();
     this.#changed();
   }
 
@@ -505,7 +538,7 @@ export class SessionManager extends EventEmitter {
       };
     }
     if (ctx.kind === 'camera') {
-      return { ...common, role: 'camera', vcam: this.virtualCamera?.status() || { supported: false, active: false } };
+      return { ...common, role: 'camera', state: ctx.state, vcam: this.virtualCamera?.status() || { supported: false, active: false } };
     }
     return { ...common, role: 'host', state: ctx.state, perms: ctx.perms, credential: ctx.credential };
   }
@@ -520,7 +553,7 @@ export class SessionManager extends EventEmitter {
   }
 
   sendSignal(ctx, data) {
-    if (ctx.kind === 'host' && ctx.state !== 'active') return;
+    if ((ctx.kind === 'host' || ctx.kind === 'camera') && ctx.state !== 'active') return;
     this.signaling.send(ctx.sid, { type: 'signal', data }).catch((err) => {
       this.log.warn(`[session] signal to ${ctx.peerId} failed: ${err.message}`);
     });

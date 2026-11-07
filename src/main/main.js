@@ -449,6 +449,7 @@ async function main() {
   });
   handle('camera:attach', ['camera'], (ctx) => sessions.attachVirtualCamera(ctx));
   handle('camera:end', ['camera'], (ctx) => sessions.endSession(ctx.sid, 'camera-ended'));
+  handle('camera:consent', ['camera'], (ctx, accept) => sessions.cameraConsent(ctx.sid, Boolean(accept)));
   handle('host:consent', ['host'], (ctx, accept) => sessions.hostConsent(ctx.sid, Boolean(accept)));
   handle('host:displays', ['host'], () => sessions.listDisplays());
   handle('capture:start', ['host'], (ctx, opts) => sessions.startNativeCapture(ctx, opts));

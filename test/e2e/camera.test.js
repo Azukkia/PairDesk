@@ -175,10 +175,28 @@ async function scenario(pc, phone) {
       await poll(async () => (await vcamState()) === 'in-use', { message: 'webcam reported in use' });
     }
 
-    // The computer ends the session: the phone is told.
+    // The computer ends the session: the phone is told, and the password
+    // changes like after a control session.
+    await pc.main.evaluate(() => window.pairdesk.invoke('settings:update', { regeneratePasswordAfterSession: true, confirmIncoming: true }));
     await win.click('#camera-end');
     await poll(() => closed !== null, { message: 'phone told the session ended' });
     await poll(() => !pc.app.windows().some((w) => w.url().includes('/camera/')), { message: 'camera window closed' });
+    const newPassword = await poll(async () => {
+      const p = (await pc.main.textContent('#my-password')).trim();
+      return p !== password ? p : null;
+    }, { message: 'password changed after the camera session' });
+
+    // "Confirm incoming connections" applies to cameras too: declined here.
+    const asking = phone.signaling.connect(hostId, await derivePrs(newPassword, hostId), {
+      intro: { name: 'Téléphone de test', platform: 'android', appVersion: '1.2.0', kind: 'camera' },
+    });
+    asking.catch(() => {});
+    const win2 = await waitForWindow(pc.app, '/camera/');
+    await win2.waitForSelector('#camera-decline', { timeout: 20_000 });
+    await win2.screenshot({ path: path.join(artifacts, 'camera-request.png') }).catch(() => {});
+    await win2.click('#camera-decline');
+    await assert.rejects(asking, (err) => err.code === 'declined');
+    await poll(() => !pc.app.windows().some((w) => w.url().includes('/camera/')), { message: 'declined camera window closed' });
   } finally {
     relaying = false;
     await relay;

@@ -127,7 +127,34 @@ function renderVcam() {
 
 // ───────────────────────────── session ─────────────────────────────
 
+/** "Confirm incoming connections": the phone waits for the local user's answer. */
+function showRequest() {
+  setStatus(t('host.requestTitle'));
+  let remaining = 45;
+  const countdown = h('span', { class: 'countdown' }, t('host.autoDecline', { s: remaining }));
+  timers.countdown = setInterval(() => {
+    remaining = Math.max(0, remaining - 1);
+    countdown.textContent = t('host.autoDecline', { s: remaining });
+  }, 1000);
+  const answer = (accept) => {
+    clearInterval(timers.countdown);
+    for (const btn of ui.overlay.querySelectorAll('button')) btn.disabled = true;
+    api.invoke('camera:consent', accept);
+  };
+  ui.overlay.replaceChildren(
+    icon('camera'),
+    h('span', { class: 'text' }, t('camera.requestBody', { name: init.peer.name || formatId(init.peer.id), id: formatId(init.peer.id) })),
+    countdown,
+    h('div', { class: 'row' },
+      h('button', { class: 'btn', id: 'camera-decline', onclick: () => answer(false) }, t('host.decline')),
+      h('button', { class: 'btn primary', id: 'camera-accept', onclick: () => answer(true) }, t('host.accept'))),
+  );
+}
+
 function start() {
+  clearInterval(timers.countdown);
+  setStatus(t('camera.connecting'));
+  ui.overlay.replaceChildren(icon('camera'), h('span', { class: 'text' }, t('camera.waiting')));
   rtc = new RtcSession({ role: 'host', iceServers: init.iceServers, camera: true });
   rtc.addEventListener('track', ({ detail: event }) => {
     if (event.track.kind !== 'video') return;
@@ -230,8 +257,13 @@ async function feedWebcam(videoTrack) {
 
 // ───────────────────────────── boot ─────────────────────────────
 
+api.on('session:state', ({ state }) => {
+  if (state === 'active' && !rtc) start();
+});
+
 init = await api.invoke('session:init');
 setLanguage(init.lang);
 st.vcam = init.vcam || null;
 build();
-start();
+if (init.state === 'pending') showRequest();
+else start();

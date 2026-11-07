@@ -13,7 +13,7 @@ const INVOKE = new Set([
   'host:consent', 'host:displays', 'host:end', 'capture:start',
   'files:begin', 'files:end', 'files:show',
   'clipboard:current', 'clipboard:list', 'clipboard:read', 'clipboard:expect',
-  'camera:attach', 'camera:end',
+  'camera:attach', 'camera:end', 'camera:consent',
   'e2e:cursor', 'e2e:vcam', 'e2e:capture',
 ]);
 
