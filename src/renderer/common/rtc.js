@@ -199,6 +199,14 @@ export class RtcSession extends EventTarget {
     }
   }
 
+  static #close(channel) {
+    try {
+      channel?.close();
+    } catch {
+      /* already closed */
+    }
+  }
+
   static #send(channel, data) {
     if (channel?.readyState !== 'open') return false;
     try {
@@ -298,59 +306,73 @@ export class RtcSession extends EventTarget {
     // The completion timeout only starts once everything is sent: a slow
     // link is not a failure.
     const done = this.#waitFor(fid, ['file-done']);
-    if (file.size > 0) {
-      const dc = this.pc.createDataChannel(`file:${fid}`, { ordered: true });
-      dc.binaryType = 'arraybuffer';
-      dc.bufferedAmountLowThreshold = LOW_WATER;
-      await new Promise((resolve, reject) => {
-        dc.onopen = resolve;
-        dc.onerror = reject;
-        dc.onclose = reject;
-      }).catch(() => null);
-      if (dc.readyState !== 'open') {
-        done.startTimeout(0);
-        view.update({ status: 'failed' });
-        return false;
-      }
-      let offset = 0;
-      this.#startPings();
-      try {
-        while (offset < file.size) {
-          if (dc.readyState !== 'open') throw new Error('channel closed');
-          if (dc.bufferedAmount > HIGH_WATER) {
-            await new Promise((resolve) => {
-              const timer = setTimeout(resolve, 1000); // in case the event is missed
-              dc.onbufferedamountlow = () => {
-                clearTimeout(timer);
-                dc.onbufferedamountlow = null;
-                resolve();
-              };
-            });
-            continue;
-          }
-          const buf = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
-          // Peers older than 1.1 never answer pings: no pacing for them
-          // (plain buffer-based flow control, as before).
-          if (this.peerPongs) await this.pacer.take(buf.byteLength);
-          if (dc.readyState !== 'open') throw new Error('channel closed');
-          dc.send(buf);
-          offset += buf.byteLength;
-          view.update({ progress: offset / file.size });
+    const fail = () => {
+      done.startTimeout(0);
+      this.sendControl({ type: 'file-cancel', fid });
+      view.update({ status: 'failed' });
+      return false;
+    };
+    // Each file has its own channel, closed once done: a connection only
+    // has a few hundred of them (stream ids are reused once closed).
+    let dc = null;
+    try {
+      if (file.size > 0) {
+        try {
+          dc = this.pc.createDataChannel(`file:${fid}`, { ordered: true });
+        } catch (err) {
+          console.warn(`[rtc] no data channel for ${fid}: ${err.message}`);
+          return fail();
         }
-      } catch {
-        done.startTimeout(0);
-        this.sendControl({ type: 'file-cancel', fid });
-        view.update({ status: 'failed' });
-        return false;
-      } finally {
-        this.#stopPings();
+        dc.binaryType = 'arraybuffer';
+        dc.bufferedAmountLowThreshold = LOW_WATER;
+        await new Promise((resolve, reject) => {
+          dc.onopen = resolve;
+          dc.onerror = reject;
+          dc.onclose = reject;
+        }).catch(() => null);
+        if (dc.readyState !== 'open') return fail();
+        let offset = 0;
+        this.#startPings();
+        try {
+          while (offset < file.size) {
+            if (dc.readyState !== 'open') throw new Error('channel closed');
+            if (dc.bufferedAmount > HIGH_WATER) {
+              await new Promise((resolve) => {
+                const timer = setTimeout(resolve, 1000); // in case the event is missed
+                dc.onbufferedamountlow = () => {
+                  clearTimeout(timer);
+                  dc.onbufferedamountlow = null;
+                  resolve();
+                };
+              });
+              continue;
+            }
+            const buf = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+            // Nothing more to read: the file shrank since it was offered.
+            if (!buf.byteLength) throw new Error('file changed');
+            // Peers older than 1.1 never answer pings: no pacing for them
+            // (plain buffer-based flow control, as before).
+            if (this.peerPongs) await this.pacer.take(buf.byteLength);
+            if (dc.readyState !== 'open') throw new Error('channel closed');
+            dc.send(buf);
+            offset += buf.byteLength;
+            view.update({ progress: offset / file.size });
+          }
+        } catch {
+          return fail();
+        } finally {
+          this.#stopPings();
+        }
       }
+      done.startTimeout(10 * 60_000);
+      const result = await done;
+      const ok = result.type === 'file-done' && result.ok;
+      view.update({ status: ok ? 'sent' : 'failed', progress: 1 });
+      return ok;
+    } finally {
+      // The receiver closes it too once everything arrived.
+      RtcSession.#close(dc);
     }
-    done.startTimeout(10 * 60_000);
-    const result = await done;
-    const ok = result.type === 'file-done' && result.ok;
-    view.update({ status: ok ? 'sent' : 'failed', progress: 1 });
-    return ok;
   }
 
   // Round-trip probes while files are being sent: they drive the file pacer.
@@ -372,12 +394,21 @@ export class RtcSession extends EventTarget {
     const size = Number(msg.size);
     const name = String(msg.name || 'file').slice(0, 255);
     if (!msg.fid || !Number.isSafeInteger(size) || size < 0) return;
-    const res = await this.acceptFile({ name, size, drop: msg.drop, clip: msg.clip });
-    if (!res.ok) {
+    let res = null;
+    try {
+      res = await this.acceptFile({ name, size, drop: msg.drop, clip: msg.clip });
+    } catch (err) {
+      console.warn(`[rtc] file offer: ${err.message}`);
+    }
+    if (!res?.ok) {
       this.sendControl({ type: 'file-reject', fid: msg.fid });
       return;
     }
-    const rx = { fid: msg.fid, token: res.token, name: res.name, size, received: 0, buffer: [], buffered: 0, view: res.view };
+    const rx = {
+      fid: msg.fid, token: res.token, name: res.name, size, received: 0, buffer: [], buffered: 0, view: res.view, channel: null,
+      // Clipboard content and dropped files are not saved in Downloads: nothing to show there.
+      shown: !res.clip && !res.dropped,
+    };
     this.incomingFiles.set(msg.fid, rx);
     this.sendControl({ type: 'file-accept', fid: msg.fid });
     if (size === 0) this.#finishIncoming(rx);
@@ -390,9 +421,11 @@ export class RtcSession extends EventTarget {
       channel.close();
       return;
     }
+    rx.channel = channel;
     channel.binaryType = 'arraybuffer';
     channel.onmessage = (e) => {
-      if (!(e.data instanceof ArrayBuffer)) return;
+      // Finished or abandoned: bytes beyond the announced size are ignored.
+      if (this.incomingFiles.get(fid) !== rx || !(e.data instanceof ArrayBuffer)) return;
       const chunk = new Uint8Array(e.data);
       rx.received += chunk.length;
       rx.buffer.push(chunk);
@@ -425,13 +458,15 @@ export class RtcSession extends EventTarget {
   async #finishIncoming(rx) {
     this.incomingFiles.delete(rx.fid);
     this.#flushIncoming(rx);
+    RtcSession.#close(rx.channel);
     const res = await api.invoke('files:end', rx.token);
     this.sendControl({ type: 'file-done', fid: rx.fid, ok: res.ok });
-    rx.view?.update({ status: res.ok ? 'received' : 'failed', progress: 1, path: res.path });
+    rx.view?.update({ status: res.ok ? 'received' : 'failed', progress: 1, path: rx.shown ? res.path : undefined });
   }
 
   #abortIncoming(rx) {
     this.incomingFiles.delete(rx.fid);
+    RtcSession.#close(rx.channel);
     api.send('files:abort', rx.token);
     rx.view?.update({ status: 'failed' });
   }
