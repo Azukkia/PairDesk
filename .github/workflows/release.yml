@@ -8,6 +8,9 @@
 # Release files never expire. Fixed-name copies give permanent links to the
 # latest version, e.g.
 #   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk-Setup.exe
+#   https://github.com/Azukkia/PairDesk/releases/latest/download/PairDesk.apk
+# (the Android app, signed with the key of the ANDROID_* repository secrets;
+# the desktop app's home screen offers it through a QR code).
 
 name: Release
 
@@ -110,9 +113,56 @@ jobs:
             gh release upload "v$VERSION" dist/PairDesk-x86_64.AppImage dist/PairDesk-amd64.deb --clobber --repo "$GITHUB_REPOSITORY"
           fi
 
+  android:
+    name: Build (Android)
+    needs: prepare
+    if: needs.prepare.outputs.create == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # For the interop tests of android/core (desktop signaling code), without Electron.
+      - name: Desktop dependencies for the interop tests
+        run: npm ci --ignore-scripts
+      # Released APKs are always signed with the PairDesk key (updates install
+      # over the previous version only with the same key).
+      - name: Open the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash .github/scripts/android-signing.sh --required
+      - name: Tests and release APK
+        working-directory: android
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleRelease
+      - name: Check the signature
+        run: bash .github/scripts/android-apk.sh "$RUNNER_TEMP/apk" --expect-release-key
+      - name: Upload to the draft release (versioned and fixed-name copies)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          cp "$RUNNER_TEMP/apk/PairDesk.apk" "$RUNNER_TEMP/apk/PairDesk-$VERSION.apk"
+          gh release upload "v$VERSION" "$RUNNER_TEMP/apk/PairDesk-$VERSION.apk" "$RUNNER_TEMP/apk/PairDesk.apk" \
+            --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/pairdesk.keystore"
+
   publish:
     name: Publish release
-    needs: [prepare, build]
+    needs: [prepare, build, android]
     runs-on: ubuntu-latest
     steps:
       - name: Publish the release (makes it visible to the auto-updater)
