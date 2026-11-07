@@ -651,7 +651,7 @@ function attachInput() {
     }
     sendReliable([p ? ['u', e.button, p[0], p[1], pointerSeq] : ['u', e.button]]);
   });
-  window.addEventListener('mousemove', (e) => {
+  const onMove = (e) => {
     if (!canControl()) return;
     if (!pressedButtons.size && !ui.stage.contains(e.target)) return;
     if (e.target.closest?.('.overlay')) return;
@@ -660,7 +660,16 @@ function attachInput() {
       remotePointer.localMove();
       sendMove(p[0], p[1]);
     }
-  });
+  };
+  // 'pointerrawupdate' arrives as soon as the mouse moved; 'mousemove' waits
+  // for the next display frame (up to 16 ms later). Both are listened to: a
+  // position already sent is not sent again.
+  if ('onpointerrawupdate' in window) {
+    window.addEventListener('pointerrawupdate', (e) => {
+      if (e.pointerType === 'mouse') onMove(e);
+    });
+  }
+  window.addEventListener('mousemove', onMove);
   ui.stage.addEventListener('wheel', (e) => {
     if (!canControl()) return;
     e.preventDefault();

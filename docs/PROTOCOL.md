@@ -166,6 +166,14 @@ current display, `0 ≤ x, y ≤ 1` (rounded to 4 decimals).
 | `['t', text]` (1.2+) | type Unicode text (≤ 256 chars), for mobile keyboards |
 | `['a', action]` (1.2+, Android hosts) | `back`, `home`, `recents`, `notifications` |
 
+Host → controller on the `pointer` channel (1.3+): `['p', x, y, inside]`,
+where the host's cursor is (normalized like above; `inside` 1/0 whether it is
+on the shared display), about 30 times a second when it moves. Sent only when
+the picture has no cursor painted in (1.3 hosts capture the screen without
+it, so that the controller does not see a second cursor trailing behind its
+own): the controller draws the cursor at that point when its own mouse is
+still, or always when it cannot control. Older controllers ignore it.
+
 Sequence numbers (1.1+): `seq` increases for every position-bearing event of a
 viewer window; `btnSeq` is the `seq` of the last `d`/`u`/`w` sent before the
 move. The host drops a move whose `seq` is not above the last applied one, or
